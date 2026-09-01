@@ -1,0 +1,216 @@
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -10,8 +10,8 @@
+         applicationId 'dev.mdview.app'
+         minSdk 23
+         targetSdk 34
+-        versionCode 2
+-        versionName '1.0.1'
++        versionCode 3
++        versionName '1.0.2'
+ 
+         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+     }
+@@ -25,6 +25,7 @@
+     }
+ 
+     compileOptions {
++        coreLibraryDesugaringEnabled true
+         sourceCompatibility JavaVersion.VERSION_11
+         targetCompatibility JavaVersion.VERSION_11
+     }
+@@ -40,6 +41,7 @@
+ }
+ 
+ dependencies {
++    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+     implementation 'org.commonmark:commonmark:0.25.1'
+     implementation 'org.commonmark:commonmark-ext-gfm-tables:0.25.1'
+     implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.25.1'
+--- a/app/src/main/java/dev/mdview/app/MarkdownRenderer.java
++++ b/app/src/main/java/dev/mdview/app/MarkdownRenderer.java
+@@ -20,27 +20,37 @@
+     private static final int MAX_HTML_CHARS = 4_000_000;
+     private static final int MAX_FALLBACK_SOURCE_CHARS = 500_000;
+ 
+-    private static final List<Extension> EXTENSIONS = Arrays.asList(
+-            TablesExtension.create(),
+-            StrikethroughExtension.create()
+-    );
+-
+-    private static final Parser PARSER = Parser.builder()
+-            .extensions(EXTENSIONS)
+-            .build();
+-
+-    private static final HtmlRenderer HTML_RENDERER = HtmlRenderer.builder()
+-            .extensions(EXTENSIONS)
+-            .escapeHtml(true)
+-            .sanitizeUrls(true)
+-            .build();
++    /**
++     * Initializes CommonMark only when a preview is requested. Keeping it in a nested holder lets
++     * renderSafely catch runtime linkage failures on older Android releases instead of failing while
++     * MarkdownRenderer itself is being initialized.
++     */
++    private static final class Engine {
++        private static final List<Extension> EXTENSIONS = Arrays.asList(
++                TablesExtension.create(),
++                StrikethroughExtension.create()
++        );
++
++        private static final Parser PARSER = Parser.builder()
++                .extensions(EXTENSIONS)
++                .build();
++
++        private static final HtmlRenderer HTML_RENDERER = HtmlRenderer.builder()
++                .extensions(EXTENSIONS)
++                .escapeHtml(true)
++                .sanitizeUrls(true)
++                .build();
++
++        private Engine() {
++        }
++    }
+ 
+     private MarkdownRenderer() {
+     }
+ 
+     static String toHtmlFragment(String markdown) {
+-        Node document = PARSER.parse(markdown == null ? "" : markdown);
+-        return HTML_RENDERER.render(document);
++        Node document = Engine.PARSER.parse(markdown == null ? "" : markdown);
++        return Engine.HTML_RENDERER.render(document);
+     }
+ 
+     static String toHtmlDocument(String markdown, boolean darkTheme) {
+@@ -89,6 +99,14 @@
+                             "The source is still available in Raw view.",
+                     false
+             );
++        } catch (LinkageError error) {
++            return fallbackResult(
++                    source,
++                    darkTheme,
++                    "This Android version could not initialize the Markdown engine. " +
++                            "A plain-text preview is shown instead.",
++                    true
++            );
+         } catch (RuntimeException exception) {
+             return fallbackResult(
+                     source,
+--- a/app/src/main/java/dev/mdview/app/MainActivity.java
++++ b/app/src/main/java/dev/mdview/app/MainActivity.java
+@@ -160,9 +160,13 @@
+         loadGeneration.incrementAndGet();
+         fileExecutor.shutdownNow();
+         if (renderedWebView != null) {
+-            renderedWebView.stopLoading();
+-            renderedWebView.loadUrl("about:blank");
+-            renderedWebView.destroy();
++            try {
++                renderedWebView.stopLoading();
++                renderedWebView.loadUrl("about:blank");
++                renderedWebView.destroy();
++            } catch (RuntimeException | LinkageError ignored) {
++                // WebView may already be unavailable while the activity is being destroyed.
++            }
+         }
+         super.onDestroy();
+     }
+@@ -877,6 +881,10 @@
+                 showLoadError(generation, "This file is larger than 8 MB.");
+             } catch (SecurityException exception) {
+                 showLoadError(generation, "Android did not grant access to this file.");
++            } catch (OutOfMemoryError error) {
++                showLoadError(generation, "Android ran out of memory while opening this document.");
++            } catch (LinkageError error) {
++                showLoadError(generation, "This Android version could not initialize the Markdown engine.");
+             } catch (Exception exception) {
+                 String message = exception.getMessage();
+                 showLoadError(generation, message == null || message.trim().isEmpty()
+@@ -926,13 +934,13 @@
+     private void setRawTextSafely(String source) {
+         try {
+             rawTextView.setText(source);
+-        } catch (RuntimeException | OutOfMemoryError error) {
++        } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+             int end = Math.min(source.length(), MAX_RAW_RECOVERY_CHARS);
+             String recovery = source.substring(0, end) +
+                     "\n\n[Raw display was shortened because Android could not lay out the complete document.]";
+             try {
+                 rawTextView.setText(recovery);
+-            } catch (RuntimeException | OutOfMemoryError secondError) {
++            } catch (RuntimeException | LinkageError | OutOfMemoryError secondError) {
+                 rawTextView.setText("The document opened, but Android could not display its raw text.");
+             }
+             showToast("Raw view was shortened to keep the app stable.");
+@@ -959,7 +967,7 @@
+                         null
+                 );
+                 return;
+-            } catch (RuntimeException | OutOfMemoryError error) {
++            } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+                 webPreviewAvailable = false;
+                 nativePreviewReason = "Android could not display the WebView preview. " +
+                         "Native preview mode is active.";
+@@ -989,7 +997,7 @@
+                 nativeText = Html.fromHtml(fragment);
+             }
+             renderedFallbackView.setText(nativeText);
+-        } catch (RuntimeException | OutOfMemoryError error) {
++        } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+             String source = currentMarkdown == null ? "" : currentMarkdown;
+             int end = Math.min(source.length(), MAX_RAW_RECOVERY_CHARS);
+             renderedFallbackView.setText(source.substring(0, end));
+--- a/.github/workflows/build-apk.yml
++++ b/.github/workflows/build-apk.yml
+@@ -5,6 +5,7 @@
+   push:
+     branches:
+       - main
++      - fix-api23-crash-v1.0.2
+ 
+ permissions:
+   contents: read
+@@ -44,6 +45,12 @@
+         run: |
+           set -euo pipefail
+           gradle --no-daemon --stacktrace clean testReleaseUnitTest lintRelease assembleRelease
++          unzip -p app/build/outputs/apk/release/app-release-unsigned.apk 'classes*.dex' | strings > artifact-dex-strings.txt
++          grep -q 'Lj\$/util/function/' artifact-dex-strings.txt
++          if grep -q 'Ljava/util/function/' artifact-dex-strings.txt; then
++            echo "Unrewritten java.util.function references remain in the release DEX." >&2
++            exit 1
++          fi
+ 
+       - name: Sign and verify APK
+         shell: bash
+@@ -53,7 +60,7 @@
+           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+           ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
+           OUTPUT_DIR="artifact"
+-          OUTPUT_APK="$OUTPUT_DIR/MD-View-v1.0.1.apk"
++          OUTPUT_APK="$OUTPUT_DIR/MD-View-v1.0.2.apk"
+           STORE_PASSWORD="mdview-build-2026"
+ 
+           test -f "$UNSIGNED_APK"
+@@ -89,9 +96,9 @@
+           "$BUILD_TOOLS/aapt" dump badging "$OUTPUT_APK" \
+             | tee "$OUTPUT_DIR/apk-badging.txt"
+           sha256sum "$OUTPUT_APK" | tee "$OUTPUT_DIR/SHA256SUMS.txt"
+-          git archive --format=zip --output="$OUTPUT_DIR/MD-View-source-v1.0.1.zip" HEAD
++          git archive --format=zip --output="$OUTPUT_DIR/MD-View-source-v1.0.2.zip" HEAD
+           {
+-            echo "MD View 1.0.1"
++            echo "MD View 1.0.2"
+             echo "Commit: $GITHUB_SHA"
+             echo "Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+             echo "Minimum Android: 6.0 (API 23)"
+@@ -103,6 +110,6 @@
+       - name: Upload APK artifact
+         uses: actions/upload-artifact@v4
+         with:
+-          name: MD-View-v1.0.1
++          name: MD-View-v1.0.2
+           path: artifact/
+           if-no-files-found: error
