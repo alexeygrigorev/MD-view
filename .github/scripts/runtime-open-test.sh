@@ -23,6 +23,14 @@ adb push "$fixture_file" "$remote_file"
 adb shell am force-stop "$package_name"
 adb logcat -c
 
+# The normal Android shell UID cannot grant an ExternalStorageProvider URI to another
+# process. These are AOSP userdebug emulator images, so restart adbd as root solely to
+# act as the file-manager sender and issue the read grant. The receiving app itself still
+# runs under its ordinary unprivileged application UID.
+adb root | tee "$artifact_dir/adb-root-api-${api_level}.txt"
+adb wait-for-device
+adb shell id | tee "$artifact_dir/sender-identity-api-${api_level}.txt"
+
 adb shell am start -W --user 0 \
   -a android.intent.action.VIEW \
   -d "$document_uri" \
@@ -36,7 +44,10 @@ sleep 8
 assert_alive() {
   local stage="$1"
   local pid
-  pid="$(adb shell pidof "$package_name" | tr -d '\r')"
+  pid="$(adb shell pidof "$package_name" 2>/dev/null | tr -d '\r' || true)"
+  if [[ -z "$pid" ]]; then
+    pid="$(adb shell ps | awk -v package="$package_name" '$NF == package { print $2; exit }' | tr -d '\r')"
+  fi
   if [[ -z "$pid" ]]; then
     echo "The app process is not alive after: $stage" >&2
     return 1
@@ -100,9 +111,9 @@ adb shell dumpsys activity activities > "$artifact_dir/activities-api-${api_leve
 adb exec-out screencap -p > "$artifact_dir/screenshot-api-${api_level}.png" || true
 
 if grep -qE 'Process: dev\.mdview\.app\.safe|>>> dev\.mdview\.app\.safe <<<' "$artifact_dir/logcat-api-${api_level}.txt"; then
-  echo "A Java or native crash for MD View was found in logcat." >&2
+  echo "A Java or native crash for MD View Safe was found in logcat." >&2
   grep -nE -B 8 -A 30 'Process: dev\.mdview\.app\.safe|>>> dev\.mdview\.app\.safe <<<' "$artifact_dir/logcat-api-${api_level}.txt" >&2 || true
   exit 1
 fi
 
-echo "PASS: the 24,702-byte, 373-line Markdown fixture opened from a content URI and survived Split → Rendered → Split on API ${api_level}."
+echo "PASS: the 24,702-byte, 373-line Markdown fixture opened from a granted content URI and survived Split → Rendered → Split on API ${api_level}."
