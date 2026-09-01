@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'dev.mdview.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'dev.mdview.app'
+        minSdk 23
+        targetSdk 34
+        versionCode 2
+        versionName '1.0.1'
+
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
+    }
+}
+
+dependencies {
+    implementation 'org.commonmark:commonmark:0.25.1'
+    implementation 'org.commonmark:commonmark-ext-gfm-tables:0.25.1'
+    implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.25.1'
+
+    testImplementation 'junit:junit:4.13.2'
+}

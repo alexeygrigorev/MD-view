@@ -1,6 +1,6 @@
 # MD View for Android
 
-MD View is a small, offline Android viewer for Markdown documents. It is designed for the exact case where Android's **Open with** chooser does not offer a useful Markdown app.
+MD View is a small, offline Android viewer for Markdown documents. It is designed for the case where Android's **Open with** chooser does not offer a useful Markdown app.
 
 ## What it does
 
@@ -12,15 +12,28 @@ MD View is a small, offline Android viewer for Markdown documents. It is designe
 - Uses Android's document picker, so broad storage permission is not needed.
 - Works offline and requests no network or storage permissions.
 
+## Stability safeguards in 1.0.1
+
+Version 1.0.1 hardens the paths used by complex Markdown documents:
+
+- Markdown parsing happens away from the Android UI thread.
+- Parser stack overflows, malformed input failures, and preview memory limits produce a readable fallback instead of terminating the activity.
+- Android WebView renderer exits are handled with `onRenderProcessGone`; the app switches to a native preview while preserving Raw view.
+- The app can start without a working WebView package and use native preview mode.
+- Raw text layout uses Android's simpler line-breaking strategy, with a bounded recovery path if the platform cannot lay out a document.
+- Regression tests cover long lines, large tables, fenced code, Unicode punctuation, and thousands of ordered-list markers.
+
 ## Install
 
-Install `MD-View-v1.0.0.apk` on a device running Android 6.0 or newer. Because this build is distributed directly rather than through an app store, Android may ask you to allow installs from the browser or file manager you use to open the APK.
+The GitHub Actions workflow builds `MD-View-v1.0.1.apk` for Android 6.0 or newer. Open the workflow artifact, download the APK, and permit installation from the browser or file manager when Android asks.
 
-After installation, tap a Markdown document and choose **MD View** / **Open as Markdown**. You can choose **Always** in Android's chooser to make it the default.
+After installation, tap a Markdown document and choose **MD View** / **Open as Markdown**. You can choose **Always** in Android's chooser to make it the default. You can also launch MD View and press **Open**.
+
+> The workflow currently generates a fresh self-signed key for each build. Builds made by separate workflow runs cannot update one another in place. Configure a persistent signing key in GitHub Actions before publishing long-lived releases.
 
 ## Privacy and rendering behavior
 
-The raw source is read-only and selectable. The rendered pane has JavaScript, DOM storage, file access, content access, and network loading disabled. Raw HTML in Markdown is escaped, unsafe URLs are sanitized, and external web links are passed to another installed app.
+The raw source is read-only and selectable. In the WebView preview, JavaScript, DOM storage, file access, content access, and network loading are disabled. Raw HTML in Markdown is escaped, unsafe URLs are sanitized, and supported external links are passed to another installed app. If WebView is unavailable or its renderer exits, MD View falls back to Android's native HTML display rather than closing.
 
 ## Build locally
 
@@ -30,11 +43,12 @@ The project uses Android Gradle Plugin 8.13.2, Gradle 8.13, JDK 17, and Android 
 gradle clean testReleaseUnitTest lintRelease assembleRelease
 ```
 
-A release APK produced by Gradle is unsigned. The included GitHub Actions workflow signs the downloadable artifact with a one-build self-signed key and verifies the result with `apksigner`.
+The Gradle release APK is unsigned. The included GitHub Actions workflow signs the downloadable artifact and verifies it with `apksigner`.
 
 ## Source layout
 
-- `MainActivity.java`: file intents, document picker, and native UI.
-- `MarkdownRenderer.java`: CommonMark-to-safe-HTML conversion.
-- `AndroidManifest.xml`: launcher and Markdown file associations.
-- `.github/workflows/build-apk.yml`: tested, signed APK build.
+- `app/src/main/java/dev/mdview/app/MainActivity.java`: file intents, document loading, UI, WebView recovery, and native fallback.
+- `app/src/main/java/dev/mdview/app/MarkdownRenderer.java`: bounded CommonMark-to-safe-HTML conversion.
+- `app/src/test/java/dev/mdview/app/MarkdownRendererTest.java`: rendering and crash-regression tests.
+- `app/src/main/AndroidManifest.xml`: launcher and Markdown file associations.
+- `.github/workflows/build-apk.yml`: test, lint, build, signing, and verification workflow.
