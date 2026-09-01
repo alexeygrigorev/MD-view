@@ -32,7 +32,7 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Reproduce current API 23 crash
+      - name: Launch Markdown on Android 6 and verify the process
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 23
@@ -45,23 +45,25 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
             adb logcat -c || exit 1
             adb shell am force-stop dev.mdview.app || exit 1
-            adb shell am start -W \
-              -n dev.mdview.app/.MainActivity \
-              -a android.intent.action.SEND \
-              -t text/plain \
-              --es android.intent.extra.TEXT "# Android 6 reproduction\n\n- raw\n- rendered" || exit 1
-            sleep 4
+            adb shell am start -W -n dev.mdview.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT '# Android 6 reproduction' || exit 1
+            sleep 5
             adb logcat -d -v threadtime > api23-logcat.txt || exit 1
-            grep -E "FATAL EXCEPTION|NoClassDefFoundError|java[./]util[./]function" api23-logcat.txt > api23-crash-extract.txt || true
-            cat api23-crash-extract.txt
-            grep -Eq "NoClassDefFoundError.*java[./]util[./]function|java[./]util[./]function.*NoClassDefFoundError" api23-logcat.txt
+            adb shell uiautomator dump /sdcard/mdview-window.xml >/dev/null || exit 1
+            adb pull /sdcard/mdview-window.xml api23-ui.xml >/dev/null || exit 1
+            PID="$(adb shell pidof dev.mdview.app | tr -d '\r')"
+            test -n "$PID" || { echo 'MD View process is not alive'; cat api23-logcat.txt; exit 1; }
+            if grep -A30 -B3 'FATAL EXCEPTION' api23-logcat.txt | grep -q 'dev.mdview.app'; then cat api23-logcat.txt; exit 1; fi
+            if grep -Eq 'NoClassDefFoundError.*java[./]util[./]function|java[./]util[./]function.*NoClassDefFoundError' api23-logcat.txt; then cat api23-logcat.txt; exit 1; fi
+            grep -q 'Android 6 reproduction' api23-ui.xml || { cat api23-ui.xml; cat api23-logcat.txt; exit 1; }
+            echo "MD View stayed alive as PID $PID and displayed the Markdown input."
 
-      - name: Upload reproduction logs
+      - name: Upload runtime evidence and debug APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: api23-reproduction-logs
+          name: api23-runtime-evidence
           path: |
             api23-logcat.txt
-            api23-crash-extract.txt
+            api23-ui.xml
+            app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
