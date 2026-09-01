@@ -429,9 +429,8 @@ public final class MainActivity extends Activity {
         raw.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
         raw.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
         raw.setHorizontallyScrolling(true);
-        raw.setHorizontalScrollBarEnabled(true);
-        raw.setVerticalScrollBarEnabled(true);
-        raw.setScrollbarFadingEnabled(false);
+        raw.setHorizontalScrollBarEnabled(false);
+        raw.setVerticalScrollBarEnabled(false);
         raw.setMovementMethod(ScrollingMovementMethod.getInstance());
         raw.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         raw.setContentDescription("Raw Markdown source");
@@ -473,8 +472,7 @@ public final class MainActivity extends Activity {
         fallback.setTextIsSelectable(true);
         fallback.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
         fallback.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
-        fallback.setVerticalScrollBarEnabled(true);
-        fallback.setScrollbarFadingEnabled(false);
+        fallback.setVerticalScrollBarEnabled(false);
         fallback.setMovementMethod(ScrollingMovementMethod.getInstance());
         fallback.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         fallback.setContentDescription("Native rendered Markdown preview");
