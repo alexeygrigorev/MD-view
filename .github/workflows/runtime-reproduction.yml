@@ -56,18 +56,9 @@ jobs:
           profile: Nexus 5X
           ram-size: 2048M
           heap-size: 256M
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -no-metrics
           disable-animations: true
-          script: |
-            mkdir -p runtime-artifact
-            adb logcat -c
-            status=0
-            gradle --no-daemon --stacktrace connectedDebugAndroidTest || status=$?
-            adb logcat -d -v threadtime > runtime-artifact/logcat-api-${{ matrix.api-level }}.txt || true
-            adb shell dumpsys meminfo dev.mdview.app > runtime-artifact/meminfo-api-${{ matrix.api-level }}.txt || true
-            adb shell dumpsys activity activities > runtime-artifact/activities-api-${{ matrix.api-level }}.txt || true
-            adb exec-out screencap -p > runtime-artifact/screenshot-api-${{ matrix.api-level }}.png || true
-            exit "$status"
+          script: bash .github/scripts/runtime-open-test.sh "${{ matrix.api-level }}"
 
       - name: Upload runtime evidence
         if: always()
