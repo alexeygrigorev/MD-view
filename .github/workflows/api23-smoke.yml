@@ -32,7 +32,7 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Launch Markdown on Android 6 and verify the process
+      - name: Open a long Markdown file on Android 6 and verify drawing
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 23
@@ -42,20 +42,24 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none
           script: |
+            printf '# Android 6 long-document smoke test\n\n' > api23-smoke.md; seq 1 600 | sed 's/^/- rendered and raw line /' >> api23-smoke.md
             adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
+            adb push api23-smoke.md /data/local/tmp/api23-smoke.md || exit 1
+            adb shell run-as dev.mdview.app mkdir -p files || exit 1
+            adb shell run-as dev.mdview.app cp /data/local/tmp/api23-smoke.md files/api23-smoke.md || exit 1
             adb logcat -c || exit 1
             adb shell am force-stop dev.mdview.app || exit 1
-            adb shell am start -W -n dev.mdview.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT '# Android 6 reproduction' || exit 1
-            sleep 5
+            adb shell am start -W -n dev.mdview.app/.MainActivity -a android.intent.action.VIEW -d file:///data/data/dev.mdview.app/files/api23-smoke.md -t text/markdown || exit 1
+            sleep 10
             adb logcat -d -v threadtime > api23-logcat.txt || exit 1
             adb shell uiautomator dump /sdcard/mdview-window.xml >/dev/null || exit 1
             adb pull /sdcard/mdview-window.xml api23-ui.xml >/dev/null || exit 1
-            PID="$(adb shell pidof dev.mdview.app | tr -d '\r')"
-            test -n "$PID" || { echo 'MD View process is not alive'; cat api23-logcat.txt; exit 1; }
-            if grep -A30 -B3 'FATAL EXCEPTION' api23-logcat.txt | grep -q 'dev.mdview.app'; then cat api23-logcat.txt; exit 1; fi
+            test -n "$(adb shell ps | awk '$NF == "dev.mdview.app" { print $2 }' | tr -d '\r')" || { echo 'MD View process is not alive'; cat api23-logcat.txt; exit 1; }
+            if grep -A80 -B3 'FATAL EXCEPTION' api23-logcat.txt | grep -q 'dev.mdview.app'; then cat api23-logcat.txt; exit 1; fi
             if grep -Eq 'NoClassDefFoundError.*java[./]util[./]function|java[./]util[./]function.*NoClassDefFoundError' api23-logcat.txt; then cat api23-logcat.txt; exit 1; fi
-            grep -q 'Android 6 reproduction' api23-ui.xml || { cat api23-ui.xml; cat api23-logcat.txt; exit 1; }
-            echo "MD View stayed alive as PID $PID and displayed the Markdown input."
+            if grep -q 'Unfortunately, MD View has stopped' api23-ui.xml; then cat api23-ui.xml; cat api23-logcat.txt; exit 1; fi
+            grep -q 'api23-smoke.md' api23-ui.xml || { cat api23-ui.xml; cat api23-logcat.txt; exit 1; }
+            echo 'MD View stayed alive and drew a long raw/rendered Markdown document on Android 6.'
 
       - name: Upload runtime evidence and debug APK
         if: always()
@@ -65,5 +69,6 @@ jobs:
           path: |
             api23-logcat.txt
             api23-ui.xml
+            api23-smoke.md
             app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
