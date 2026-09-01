@@ -1,10 +1,11 @@
-name: Build installable MD View APK
+name: Build installable MD View Safe APK
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+      - fix-native-renderer-v1.0.2
 
 permissions:
   contents: read
@@ -19,13 +20,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.13'
 
@@ -53,13 +54,13 @@ jobs:
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
           OUTPUT_DIR="artifact"
-          OUTPUT_APK="$OUTPUT_DIR/MD-View-v1.0.1.apk"
+          OUTPUT_APK="$OUTPUT_DIR/MD-View-Safe-v1.0.2.apk"
           STORE_PASSWORD="mdview-build-2026"
 
           test -f "$UNSIGNED_APK"
           mkdir -p "$OUTPUT_DIR"
 
-          # Replace this generated key with a persistent release key for upgradeable releases.
+          # This test release uses its own package ID, so it can be installed beside 1.0.1.
           keytool -genkeypair -noprompt \
             -keystore mdview-release.jks \
             -storetype JKS \
@@ -69,7 +70,7 @@ jobs:
             -keyalg RSA \
             -keysize 3072 \
             -validity 10000 \
-            -dname "CN=MD View, O=Local Build, L=Berlin, C=DE"
+            -dname "CN=MD View Safe, O=Local Build, L=Berlin, C=DE"
 
           "$BUILD_TOOLS/zipalign" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
           "$BUILD_TOOLS/apksigner" sign \
@@ -89,20 +90,22 @@ jobs:
           "$BUILD_TOOLS/aapt" dump badging "$OUTPUT_APK" \
             | tee "$OUTPUT_DIR/apk-badging.txt"
           sha256sum "$OUTPUT_APK" | tee "$OUTPUT_DIR/SHA256SUMS.txt"
-          git archive --format=zip --output="$OUTPUT_DIR/MD-View-source-v1.0.1.zip" HEAD
+          git archive --format=zip --output="$OUTPUT_DIR/MD-View-Safe-source-v1.0.2.zip" HEAD
           {
-            echo "MD View 1.0.1"
+            echo "MD View Safe 1.0.2"
             echo "Commit: $GITHUB_SHA"
             echo "Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "Package: dev.mdview.app.safe"
             echo "Minimum Android: 6.0 (API 23)"
             echo "Target Android API: 34"
             echo "Compile Android API: 36"
+            echo "Renderer: native Android text; WebView disabled"
             echo "Signing: one-build self-signed certificate"
           } > "$OUTPUT_DIR/build-info.txt"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MD-View-v1.0.1
+          name: MD-View-Safe-v1.0.2
           path: artifact/
           if-no-files-found: error
