@@ -1,0 +1,53 @@
+name: Apply native-only safe renderer
+
+on:
+  push:
+    branches:
+      - fix-native-renderer-v1.0.2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix-native-renderer-v1.0.2
+          fetch-depth: 0
+
+      - name: Apply the safe renderer and runtime-test configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if grep -q "applicationId 'dev.mdview.app.safe'" app/build.gradle; then
+            echo "The native-only renderer is already applied."
+            exit 0
+          fi
+
+          git apply --check native-renderer-v1.0.2.patch
+          git apply native-renderer-v1.0.2.patch
+
+          sed -i 's/diagnostics-current-runtime/fix-native-renderer-v1.0.2/g' \
+            .github/workflows/runtime-reproduction.yml
+          sed -i 's/package_name="dev.mdview.app"/package_name="dev.mdview.app.safe"/' \
+            .github/scripts/runtime-open-test.sh
+          sed -i 's#activity_name="dev.mdview.app/.MainActivity"#activity_name="dev.mdview.app.safe/dev.mdview.app.MainActivity"#' \
+            .github/scripts/runtime-open-test.sh
+          sed -i 's/dev\\\.mdview\\\.app/dev\\\.mdview\\\.app\\\.safe/g' \
+            .github/scripts/runtime-open-test.sh
+
+          rm -f app/src/androidTest/java/dev/mdview/app/MainActivityInstrumentedTest.java
+          rm -f native-renderer-v1.0.2.patch
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "Add native-only safe renderer for device-specific crashes"
+          git push origin HEAD:fix-native-renderer-v1.0.2
