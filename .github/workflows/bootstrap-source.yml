@@ -1,59 +1,14 @@
-name: Apply Android lint compatibility fix
+name: Retired source bootstrap
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix-source:
+  retired:
+    if: ${{ false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
     steps:
-      - name: Check out main
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - name: Add narrow lint suppressions for Android 36 annotations
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("app/src/main/java/dev/mdview/app/MainActivity.java")
-          source = path.read_text(encoding="utf-8")
-
-          replacements = {
-              "    private TextView createRawTextView() {":
-                  "    @SuppressLint(\"WrongConstant\")\n    private TextView createRawTextView() {",
-              "    private TextView createRenderedFallbackView() {":
-                  "    @SuppressLint(\"WrongConstant\")\n    private TextView createRenderedFallbackView() {",
-          }
-
-          for old, new in replacements.items():
-              if old in source:
-                  source = source.replace(old, new, 1)
-
-          path.write_text(source, encoding="utf-8")
-          PY
-
-      - name: Commit the source fix when needed
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            echo "Source is already compatible."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/dev/mdview/app/MainActivity.java
-          git commit -m "Fix Android 36 TextView lint annotations"
-          git push origin HEAD:main
+      - run: echo "The one-time source migration and compatibility fix have completed."
