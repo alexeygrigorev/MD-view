@@ -160,9 +160,13 @@ public final class MainActivity extends Activity {
         loadGeneration.incrementAndGet();
         fileExecutor.shutdownNow();
         if (renderedWebView != null) {
-            renderedWebView.stopLoading();
-            renderedWebView.loadUrl("about:blank");
-            renderedWebView.destroy();
+            try {
+                renderedWebView.stopLoading();
+                renderedWebView.loadUrl("about:blank");
+                renderedWebView.destroy();
+            } catch (RuntimeException | LinkageError ignored) {
+                // WebView may already be unavailable while the activity is being destroyed.
+            }
         }
         super.onDestroy();
     }
@@ -877,6 +881,10 @@ public final class MainActivity extends Activity {
                 showLoadError(generation, "This file is larger than 8 MB.");
             } catch (SecurityException exception) {
                 showLoadError(generation, "Android did not grant access to this file.");
+            } catch (OutOfMemoryError error) {
+                showLoadError(generation, "Android ran out of memory while opening this document.");
+            } catch (LinkageError error) {
+                showLoadError(generation, "This Android version could not initialize the Markdown engine.");
             } catch (Exception exception) {
                 String message = exception.getMessage();
                 showLoadError(generation, message == null || message.trim().isEmpty()
@@ -926,13 +934,13 @@ public final class MainActivity extends Activity {
     private void setRawTextSafely(String source) {
         try {
             rawTextView.setText(source);
-        } catch (RuntimeException | OutOfMemoryError error) {
+        } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
             int end = Math.min(source.length(), MAX_RAW_RECOVERY_CHARS);
             String recovery = source.substring(0, end) +
                     "\n\n[Raw display was shortened because Android could not lay out the complete document.]";
             try {
                 rawTextView.setText(recovery);
-            } catch (RuntimeException | OutOfMemoryError secondError) {
+            } catch (RuntimeException | LinkageError | OutOfMemoryError secondError) {
                 rawTextView.setText("The document opened, but Android could not display its raw text.");
             }
             showToast("Raw view was shortened to keep the app stable.");
@@ -959,7 +967,7 @@ public final class MainActivity extends Activity {
                         null
                 );
                 return;
-            } catch (RuntimeException | OutOfMemoryError error) {
+            } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
                 webPreviewAvailable = false;
                 nativePreviewReason = "Android could not display the WebView preview. " +
                         "Native preview mode is active.";
@@ -989,7 +997,7 @@ public final class MainActivity extends Activity {
                 nativeText = Html.fromHtml(fragment);
             }
             renderedFallbackView.setText(nativeText);
-        } catch (RuntimeException | OutOfMemoryError error) {
+        } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
             String source = currentMarkdown == null ? "" : currentMarkdown;
             int end = Math.min(source.length(), MAX_RAW_RECOVERY_CHARS);
             renderedFallbackView.setText(source.substring(0, end));

@@ -20,27 +20,37 @@ final class MarkdownRenderer {
     private static final int MAX_HTML_CHARS = 4_000_000;
     private static final int MAX_FALLBACK_SOURCE_CHARS = 500_000;
 
-    private static final List<Extension> EXTENSIONS = Arrays.asList(
-            TablesExtension.create(),
-            StrikethroughExtension.create()
-    );
+    /**
+     * Initializes CommonMark only when a preview is requested. Keeping it in a nested holder lets
+     * renderSafely catch runtime linkage failures on older Android releases instead of failing while
+     * MarkdownRenderer itself is being initialized.
+     */
+    private static final class Engine {
+        private static final List<Extension> EXTENSIONS = Arrays.asList(
+                TablesExtension.create(),
+                StrikethroughExtension.create()
+        );
 
-    private static final Parser PARSER = Parser.builder()
-            .extensions(EXTENSIONS)
-            .build();
+        private static final Parser PARSER = Parser.builder()
+                .extensions(EXTENSIONS)
+                .build();
 
-    private static final HtmlRenderer HTML_RENDERER = HtmlRenderer.builder()
-            .extensions(EXTENSIONS)
-            .escapeHtml(true)
-            .sanitizeUrls(true)
-            .build();
+        private static final HtmlRenderer HTML_RENDERER = HtmlRenderer.builder()
+                .extensions(EXTENSIONS)
+                .escapeHtml(true)
+                .sanitizeUrls(true)
+                .build();
+
+        private Engine() {
+        }
+    }
 
     private MarkdownRenderer() {
     }
 
     static String toHtmlFragment(String markdown) {
-        Node document = PARSER.parse(markdown == null ? "" : markdown);
-        return HTML_RENDERER.render(document);
+        Node document = Engine.PARSER.parse(markdown == null ? "" : markdown);
+        return Engine.HTML_RENDERER.render(document);
     }
 
     static String toHtmlDocument(String markdown, boolean darkTheme) {
@@ -88,6 +98,14 @@ final class MarkdownRenderer {
                     "Rendered preview was disabled because Android reported low memory. " +
                             "The source is still available in Raw view.",
                     false
+            );
+        } catch (LinkageError error) {
+            return fallbackResult(
+                    source,
+                    darkTheme,
+                    "This Android version could not initialize the Markdown engine. " +
+                            "A plain-text preview is shown instead.",
+                    true
             );
         } catch (RuntimeException exception) {
             return fallbackResult(
