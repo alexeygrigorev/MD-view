@@ -55,7 +55,7 @@ jobs:
             adb logcat -d -v threadtime > api23-logcat.txt || exit 1
             adb shell uiautomator dump /sdcard/mdview-window.xml >/dev/null || exit 1
             adb pull /sdcard/mdview-window.xml api23-ui.xml >/dev/null || exit 1
-            test -n "$(adb shell ps | awk '$NF == \"dev.mdview.app\" { print $2 }' | tr -d '\r')" || { echo 'MD View process is not alive'; cat api23-logcat.txt; exit 1; }
+            adb shell ps | grep -q 'dev.mdview.app' || { echo 'MD View process is not alive'; cat api23-logcat.txt; exit 1; }
             if grep -A80 -B3 'FATAL EXCEPTION' api23-logcat.txt | grep -q 'dev.mdview.app'; then cat api23-logcat.txt; exit 1; fi
             if grep -Eq 'NoClassDefFoundError.*java[./]util[./]function|java[./]util[./]function.*NoClassDefFoundError' api23-logcat.txt; then cat api23-logcat.txt; exit 1; fi
             if grep -q 'Unfortunately, MD View has stopped' api23-ui.xml; then cat api23-ui.xml; cat api23-logcat.txt; exit 1; fi
