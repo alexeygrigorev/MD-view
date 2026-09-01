@@ -21,7 +21,7 @@ jobs:
           ref: fix-native-renderer-v1.0.2
           fetch-depth: 0
 
-      - name: Apply the safe renderer and runtime-test configuration
+      - name: Apply app and test changes
         shell: bash
         run: |
           set -euo pipefail
@@ -34,8 +34,10 @@ jobs:
           git apply --check native-renderer-v1.0.2.patch
           git apply native-renderer-v1.0.2.patch
 
-          sed -i 's/diagnostics-current-runtime/fix-native-renderer-v1.0.2/g' \
-            .github/workflows/runtime-reproduction.yml
+          # GitHub's workflow token cannot modify workflow definitions. Keep those files unchanged;
+          # they are updated separately through the repository connector after this app commit.
+          git restore --source=HEAD -- .github/workflows/build-apk.yml
+
           sed -i 's/package_name="dev.mdview.app"/package_name="dev.mdview.app.safe"/' \
             .github/scripts/runtime-open-test.sh
           sed -i 's#activity_name="dev.mdview.app/.MainActivity"#activity_name="dev.mdview.app.safe/dev.mdview.app.MainActivity"#' \
