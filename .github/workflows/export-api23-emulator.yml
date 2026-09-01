@@ -25,7 +25,7 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "system-images;android-23;default;x86_64"
 
-      - name: Package the portable runtime files
+      - name: Package and split the portable runtime files
         shell: bash
         run: |
           set -euo pipefail
@@ -34,18 +34,58 @@ jobs:
           cp -a "$ANDROID_HOME/platform-tools" bundle/sdk/
           cp -a "$ANDROID_HOME/system-images/android-23/default/x86_64" bundle/sdk/system-images/android-23/default/
           cp -a "$ANDROID_HOME/cmdline-tools/16.0" bundle/sdk/cmdline-tools/latest
-          du -sh bundle bundle/sdk/* bundle/sdk/system-images/android-23/default/x86_64
           tar --zstd -cf api23-emulator-runtime.tar.zst -C bundle .
           sha256sum api23-emulator-runtime.tar.zst > api23-emulator-runtime.sha256
-          ls -lh api23-emulator-runtime.tar.zst
+          split -b 240M -d -a 2 api23-emulator-runtime.tar.zst api23-emulator-runtime.part-
+          sha256sum api23-emulator-runtime.part-* > api23-emulator-parts.sha256
+          ls -lh api23-emulator-runtime.tar.zst api23-emulator-runtime.part-*
+          test -f api23-emulator-runtime.part-00
+          test -f api23-emulator-runtime.part-01
+          test -f api23-emulator-runtime.part-02
+          test -f api23-emulator-runtime.part-03
 
-      - name: Upload emulator bundle
+      - name: Upload runtime part 00
         uses: actions/upload-artifact@v4
         with:
-          name: api23-emulator-runtime
-          path: |
-            api23-emulator-runtime.tar.zst
-            api23-emulator-runtime.sha256
+          name: api23-emulator-part-00
+          path: api23-emulator-runtime.part-00
           compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload runtime part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: api23-emulator-part-01
+          path: api23-emulator-runtime.part-01
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload runtime part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: api23-emulator-part-02
+          path: api23-emulator-runtime.part-02
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload runtime part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: api23-emulator-part-03
+          path: api23-emulator-runtime.part-03
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload runtime checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: api23-emulator-checksums
+          path: |
+            api23-emulator-runtime.sha256
+            api23-emulator-parts.sha256
           if-no-files-found: error
           retention-days: 1
