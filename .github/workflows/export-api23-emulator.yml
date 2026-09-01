@@ -24,19 +24,16 @@ jobs:
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "emulator" "system-images;android-23;default;x86_64"
-          echo no | avdmanager create avd --force -n mdview-api23 --package "system-images;android-23;default;x86_64" --device "Nexus 6"
 
-      - name: Package only the runtime files
+      - name: Package the portable runtime files
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p bundle/sdk bundle/android-home
+          mkdir -p bundle/sdk/system-images/android-23/default bundle/sdk/cmdline-tools
           cp -a "$ANDROID_HOME/emulator" bundle/sdk/
           cp -a "$ANDROID_HOME/platform-tools" bundle/sdk/
-          mkdir -p bundle/sdk/system-images/android-23/default
           cp -a "$ANDROID_HOME/system-images/android-23/default/x86_64" bundle/sdk/system-images/android-23/default/
-          cp -a "$HOME/.android/avd" bundle/android-home/
-          cp -a "$HOME/.android/adbkey"* bundle/android-home/ 2>/dev/null || true
+          cp -a "$ANDROID_HOME/cmdline-tools/16.0" bundle/sdk/cmdline-tools/latest
           du -sh bundle bundle/sdk/* bundle/sdk/system-images/android-23/default/x86_64
           tar --zstd -cf api23-emulator-runtime.tar.zst -C bundle .
           sha256sum api23-emulator-runtime.tar.zst > api23-emulator-runtime.sha256
