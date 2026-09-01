@@ -14,24 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.13'
-      - name: Resolve test dependencies
-        run: gradle --no-daemon :app:dependencies --configuration testReleaseUnitTestRuntimeClasspath
-      - name: Collect CommonMark jars
+      - name: Download the exact production parser jars
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p exported
-          find "$HOME/.gradle/caches/modules-2/files-2.1/org.commonmark" -type f -name '*.jar' -print -exec cp '{}' exported/ ';'
-          ls -lah exported
-          test "$(find exported -type f -name '*.jar' | wc -l)" -ge 3
+          base=https://repo1.maven.org/maven2/org/commonmark
+          curl --fail --location --retry 3 "$base/commonmark/0.25.1/commonmark-0.25.1.jar" -o exported/commonmark-0.25.1.jar
+          curl --fail --location --retry 3 "$base/commonmark-ext-gfm-tables/0.25.1/commonmark-ext-gfm-tables-0.25.1.jar" -o exported/commonmark-ext-gfm-tables-0.25.1.jar
+          curl --fail --location --retry 3 "$base/commonmark-ext-gfm-strikethrough/0.25.1/commonmark-ext-gfm-strikethrough-0.25.1.jar" -o exported/commonmark-ext-gfm-strikethrough-0.25.1.jar
+          sha256sum exported/*.jar
       - uses: actions/upload-artifact@v4
         with:
           name: commonmark-test-jars
