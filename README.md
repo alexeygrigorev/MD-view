@@ -1,4 +1,7 @@
-# MD View for Android
+# MD View Safe for Android
+
+> **Safe 1.0.2:** the rendered pane uses Android native text rendering rather than WebView. This avoids device-specific WebView/GPU process failures while preserving Raw, Rendered, and Split modes.
+
 
 MD View is a small, offline Android viewer for Markdown documents. It is designed for the case where Android's **Open with** chooser does not offer a useful Markdown app.
 
@@ -14,7 +17,7 @@ MD View is a small, offline Android viewer for Markdown documents. It is designe
 
 ## Stability safeguards in 1.0.1
 
-Version 1.0.1 hardens the paths used by complex Markdown documents:
+Version 1.0.2 hardens the paths used by complex Markdown documents:
 
 - Markdown parsing happens away from the Android UI thread.
 - Parser stack overflows, malformed input failures, and preview memory limits produce a readable fallback instead of terminating the activity.

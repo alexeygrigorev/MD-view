@@ -2,8 +2,8 @@
 set -euo pipefail
 
 api_level="${1:?Android API level is required}"
-package_name="dev.mdview.app"
-activity_name="dev.mdview.app/.MainActivity"
+package_name="dev.mdview.app.safe"
+activity_name="dev.mdview.app.safe/dev.mdview.app.MainActivity"
 artifact_dir="runtime-artifact"
 fixture_b64="app/src/androidTest/assets/skill-shape.md.gz.b64"
 fixture_file="/tmp/SKILL.md"
@@ -99,9 +99,9 @@ adb shell dumpsys meminfo "$package_name" > "$artifact_dir/meminfo-api-${api_lev
 adb shell dumpsys activity activities > "$artifact_dir/activities-api-${api_level}.txt" || true
 adb exec-out screencap -p > "$artifact_dir/screenshot-api-${api_level}.png" || true
 
-if grep -qE 'Process: dev\.mdview\.app|>>> dev\.mdview\.app <<<' "$artifact_dir/logcat-api-${api_level}.txt"; then
+if grep -qE 'Process: dev\.mdview\.app\.safe|>>> dev\.mdview\.app\.safe <<<' "$artifact_dir/logcat-api-${api_level}.txt"; then
   echo "A Java or native crash for MD View was found in logcat." >&2
-  grep -nE -B 8 -A 30 'Process: dev\.mdview\.app|>>> dev\.mdview\.app <<<' "$artifact_dir/logcat-api-${api_level}.txt" >&2 || true
+  grep -nE -B 8 -A 30 'Process: dev\.mdview\.app\.safe|>>> dev\.mdview\.app\.safe <<<' "$artifact_dir/logcat-api-${api_level}.txt" >&2 || true
   exit 1
 fi
 

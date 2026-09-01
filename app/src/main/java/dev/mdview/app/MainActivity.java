@@ -17,8 +17,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
 import android.text.Html;
-import android.text.Layout;
 import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
 import android.text.method.ScrollingMovementMethod;
 import android.view.Gravity;
 import android.view.View;
@@ -285,7 +285,7 @@ public final class MainActivity extends Activity {
         titleColumn.setGravity(Gravity.CENTER_VERTICAL);
 
         titleView = new TextView(this);
-        titleView.setText("MD View");
+        titleView.setText("MD View Safe");
         titleView.setTextColor(textPrimaryColor);
         titleView.setTextSize(19);
         titleView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -293,7 +293,7 @@ public final class MainActivity extends Activity {
         titleView.setEllipsize(TextUtils.TruncateAt.END);
 
         subtitleView = new TextView(this);
-        subtitleView.setText("Raw + rendered Markdown");
+        subtitleView.setText("Native renderer • Raw + rendered Markdown");
         subtitleView.setTextColor(textSecondaryColor);
         subtitleView.setTextSize(12);
         subtitleView.setSingleLine(true);
@@ -422,10 +422,8 @@ public final class MainActivity extends Activity {
         raw.setIncludeFontPadding(false);
         raw.setLineSpacing(0f, 1.18f);
         raw.setTextIsSelectable(true);
-        raw.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
-        raw.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
-        raw.setHorizontallyScrolling(true);
-        raw.setHorizontalScrollBarEnabled(true);
+        raw.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        raw.setHorizontalScrollBarEnabled(false);
         raw.setVerticalScrollBarEnabled(true);
         raw.setScrollbarFadingEnabled(false);
         raw.setMovementMethod(ScrollingMovementMethod.getInstance());
@@ -443,16 +441,12 @@ public final class MainActivity extends Activity {
         renderedFallbackView.setVisibility(View.GONE);
         host.addView(renderedFallbackView, frameMatch());
 
-        try {
-            renderedWebView = createRenderedWebView();
-            host.addView(renderedWebView, frameMatch());
-        } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
-            renderedWebView = null;
-            webPreviewAvailable = false;
-            nativePreviewReason =
-                    "Android's WebView component is unavailable. Native preview mode is active.";
-            showNativePreviewMessage(nativePreviewReason);
-        }
+        // WebView is intentionally not constructed. Some Android devices terminate the entire
+        // application inside the system WebView/graphics stack before Java can catch an error.
+        // The native renderer keeps both panes in this application process and works offline.
+        renderedWebView = null;
+        webPreviewAvailable = false;
+        nativePreviewReason = null;
         return host;
     }
 
@@ -467,11 +461,11 @@ public final class MainActivity extends Activity {
         fallback.setIncludeFontPadding(false);
         fallback.setLineSpacing(0f, 1.2f);
         fallback.setTextIsSelectable(true);
-        fallback.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
-        fallback.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
+        fallback.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
         fallback.setVerticalScrollBarEnabled(true);
         fallback.setScrollbarFadingEnabled(false);
-        fallback.setMovementMethod(ScrollingMovementMethod.getInstance());
+        fallback.setLinksClickable(true);
+        fallback.setMovementMethod(LinkMovementMethod.getInstance());
         fallback.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         fallback.setContentDescription("Native rendered Markdown preview");
         return fallback;
@@ -748,8 +742,8 @@ public final class MainActivity extends Activity {
         currentMarkdown = null;
         currentRenderResult = null;
         currentByteCount = 0;
-        titleView.setText("MD View");
-        subtitleView.setText("Raw + rendered Markdown");
+        titleView.setText("MD View Safe");
+        subtitleView.setText("Native renderer • Raw + rendered Markdown");
         emptyState.setVisibility(View.VISIBLE);
         splitContainer.setVisibility(View.GONE);
         setLoading(false);
@@ -947,26 +941,8 @@ public final class MainActivity extends Activity {
             return;
         }
 
-        if (webPreviewAvailable && renderedWebView != null) {
-            try {
-                renderedFallbackView.setVisibility(View.GONE);
-                renderedWebView.setVisibility(View.VISIBLE);
-                renderedWebView.loadDataWithBaseURL(
-                        PREVIEW_BASE_URL,
-                        renderResult.htmlDocument,
-                        "text/html",
-                        StandardCharsets.UTF_8.name(),
-                        null
-                );
-                return;
-            } catch (RuntimeException | OutOfMemoryError error) {
-                webPreviewAvailable = false;
-                nativePreviewReason = "Android could not display the WebView preview. " +
-                        "Native preview mode is active.";
-            }
-        }
-
-        showNativePreview(nativePreviewReason);
+        // Native-only preview: avoid system WebView and GPU-driver crashes on affected devices.
+        showNativePreview(renderResult.notice);
     }
 
     private void showNativePreview(String reason) {
@@ -975,6 +951,7 @@ public final class MainActivity extends Activity {
         }
 
         String fragment = currentRenderResult == null ? "" : currentRenderResult.htmlFragment;
+        fragment = MarkdownRenderer.forNativeTextView(fragment);
         if (!TextUtils.isEmpty(reason)) {
             fragment = "<p><strong>Safe preview</strong><br>" +
                     MarkdownRenderer.escapeHtml(reason) + "</p>" + fragment;
@@ -989,7 +966,7 @@ public final class MainActivity extends Activity {
                 nativeText = Html.fromHtml(fragment);
             }
             renderedFallbackView.setText(nativeText);
-        } catch (RuntimeException | OutOfMemoryError error) {
+        } catch (RuntimeException | OutOfMemoryError | StackOverflowError | LinkageError error) {
             String source = currentMarkdown == null ? "" : currentMarkdown;
             int end = Math.min(source.length(), MAX_RAW_RECOVERY_CHARS);
             renderedFallbackView.setText(source.substring(0, end));
@@ -1106,7 +1083,7 @@ public final class MainActivity extends Activity {
     }
 
     private String formatDocumentSubtitle(int bytes) {
-        return formatBytes(bytes) + "  •  Raw + rendered";
+        return formatBytes(bytes) + "  •  Native raw + rendered";
     }
 
     private String formatBytes(int bytes) {

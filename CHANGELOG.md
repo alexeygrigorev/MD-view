@@ -1,14 +1,17 @@
 # Changelog
 
-## 1.0.1 — 2026-09-01
+## 1.0.2 — Safe renderer
 
-- Prevented complex Markdown parsing failures from crashing the activity.
-- Moved preview generation off the UI thread.
-- Added bounded fallback rendering for unusually large or deeply nested documents.
-- Handled Android WebView renderer termination and added a native preview fallback.
-- Allowed installation and operation when WebView is unavailable.
-- Added stress tests for complex Markdown structures and long lines.
+- Removes the system WebView from the preview path.
+- Renders Markdown with Android's native text stack in software mode.
+- Keeps Raw, Rendered, and Split modes.
+- Uses a separate application ID (`dev.mdview.app.safe`) so it can be installed alongside earlier test builds.
+- Adds a byte/line/structure-preserving Android runtime regression fixture for the reported document.
 
-## 1.0.0 — 2026-09-01
+## 1.0.1
 
-- Initial raw, rendered, and split Markdown viewer.
+- Added parser and WebView recovery paths.
+
+## 1.0.0
+
+- Initial release.

@@ -173,6 +173,35 @@ final class MarkdownRenderer {
                 "</body></html>";
     }
 
+
+    /**
+     * Adapts the generated fragment for Android's native Html parser. Android TextView does not
+     * understand table or code tags consistently, so add explicit separators and use supported
+     * tags before parsing. This method is deterministic and does not execute document content.
+     */
+    static String forNativeTextView(String fragment) {
+        if (fragment == null || fragment.isEmpty()) {
+            return "";
+        }
+        return fragment
+                .replace("<table>", "<p><tt>")
+                .replace("</table>", "</tt></p>")
+                .replace("<thead>", "")
+                .replace("</thead>", "")
+                .replace("<tbody>", "")
+                .replace("</tbody>", "")
+                .replace("<tr>", "")
+                .replace("</tr>", "<br>")
+                .replace("<th>", "")
+                .replace("</th>", " &nbsp;|&nbsp; ")
+                .replace("<td>", "")
+                .replace("</td>", " &nbsp;|&nbsp; ")
+                .replace("<code>", "<tt>")
+                .replace("</code>", "</tt>")
+                .replace("<del>", "<s>")
+                .replace("</del>", "</s>");
+    }
+
     static String escapeHtml(String value) {
         if (value == null || value.isEmpty()) {
             return "";

@@ -105,4 +105,16 @@ public class MarkdownRendererTest {
         assertTrue(MarkdownRenderer.escapeHtml("<&>\"'")
                 .equals("&lt;&amp;&gt;&quot;&#39;"));
     }
+
+    @Test
+    public void nativePreviewAddsReadableTableSeparatorsAndSupportedTags() {
+        String adapted = MarkdownRenderer.forNativeTextView(
+                "<table><tr><th>A</th><td>B</td></tr></table><code>x</code><del>y</del>"
+        );
+
+        assertFalse(adapted.contains("<table>"));
+        assertTrue(adapted.contains("|"));
+        assertTrue(adapted.contains("<tt>x</tt>"));
+        assertTrue(adapted.contains("<s>y</s>"));
+    }
 }
