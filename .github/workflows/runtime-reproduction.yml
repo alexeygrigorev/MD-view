@@ -3,7 +3,7 @@ name: Reproduce Markdown open on Android
 on:
   push:
     branches:
-      - diagnostics-current-runtime
+      - fix-native-renderer-v1.0.2
   workflow_dispatch:
 
 permissions:
