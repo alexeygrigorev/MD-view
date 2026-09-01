@@ -1,0 +1,1 @@
+Build and test MD View 1.0.2 after the Android 6 ScrollBarDrawable correction.
