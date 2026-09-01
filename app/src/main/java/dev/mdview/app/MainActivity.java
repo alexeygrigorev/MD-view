@@ -410,6 +410,7 @@ public final class MainActivity extends Activity {
         return pane;
     }
 
+    @SuppressLint("WrongConstant")
     private TextView createRawTextView() {
         TextView raw = new TextView(this);
         raw.setBackgroundColor(paneSurfaceColor);
@@ -455,6 +456,7 @@ public final class MainActivity extends Activity {
         return host;
     }
 
+    @SuppressLint("WrongConstant")
     private TextView createRenderedFallbackView() {
         TextView fallback = new TextView(this);
         fallback.setBackgroundColor(paneSurfaceColor);
