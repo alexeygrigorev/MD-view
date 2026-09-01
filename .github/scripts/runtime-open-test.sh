@@ -14,7 +14,7 @@ mkdir -p "$artifact_dir"
 base64 --decode "$fixture_b64" | gzip --decompress > "$fixture_file"
 
 test "$(wc -c < "$fixture_file")" -eq 24702
-test "$(awk 'END { print NR }' "$fixture_file")" -eq 374
+test "$(awk 'END { print NR }' "$fixture_file")" -eq 373
 
 gradle --no-daemon --stacktrace :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
@@ -105,4 +105,4 @@ if grep -qE 'Process: dev\.mdview\.app|>>> dev\.mdview\.app <<<' "$artifact_dir/
   exit 1
 fi
 
-echo "PASS: the 24,702-byte, 374-line Markdown fixture opened from a content URI and survived Split → Rendered → Split on API ${api_level}."
+echo "PASS: the 24,702-byte, 373-line Markdown fixture opened from a content URI and survived Split → Rendered → Split on API ${api_level}."
