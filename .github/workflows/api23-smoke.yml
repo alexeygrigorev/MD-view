@@ -42,18 +42,16 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none
           script: |
-            set -uo pipefail
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb logcat -c
-            adb shell am force-stop dev.mdview.app
+            adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
+            adb logcat -c || exit 1
+            adb shell am force-stop dev.mdview.app || exit 1
             adb shell am start -W \
               -n dev.mdview.app/.MainActivity \
               -a android.intent.action.SEND \
               -t text/plain \
-              --es android.intent.extra.TEXT "# Android 6 reproduction\n\n- raw\n- rendered"
+              --es android.intent.extra.TEXT "# Android 6 reproduction\n\n- raw\n- rendered" || exit 1
             sleep 4
-            adb logcat -d -v threadtime > api23-logcat.txt
-            cat api23-logcat.txt
+            adb logcat -d -v threadtime > api23-logcat.txt || exit 1
             grep -E "FATAL EXCEPTION|NoClassDefFoundError|java[./]util[./]function" api23-logcat.txt > api23-crash-extract.txt || true
             cat api23-crash-extract.txt
             grep -Eq "NoClassDefFoundError.*java[./]util[./]function|java[./]util[./]function.*NoClassDefFoundError" api23-logcat.txt
