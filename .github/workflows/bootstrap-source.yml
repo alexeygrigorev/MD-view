@@ -1,0 +1,47 @@
+name: Install MD View Android source
+
+on:
+  push:
+    branches:
+      - source-upload-v1.0.1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out staging branch
+        uses: actions/checkout@v4
+        with:
+          ref: source-upload-v1.0.1
+          fetch-depth: 0
+
+      - name: Verify and unpack the source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .source-upload/part-*.b64 > /tmp/md-view-source.tar.gz.b64
+          echo "f6b9c597a60fc115ea586d5e4961ca3fec84859b30b3a8bc2ec74121e37a8d99  /tmp/md-view-source.tar.gz.b64" | sha256sum --check -
+          base64 --decode /tmp/md-view-source.tar.gz.b64 > /tmp/md-view-source.tar.gz
+          echo "5f23d516bd0b5196d8dc483d10a0c1fee27405155860ab019d71a8153c885e83  /tmp/md-view-source.tar.gz" | sha256sum --check -
+          rm -rf /tmp/md-view-source
+          mkdir -p /tmp/md-view-source
+          tar -xzf /tmp/md-view-source.tar.gz -C /tmp/md-view-source
+
+      - name: Replace bootstrap files with the complete Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a /tmp/md-view-source/. .
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "Add Android source and prevent Markdown preview crashes"
+          git push origin HEAD:source-upload-v1.0.1
