@@ -12,20 +12,23 @@ MD View is a small, offline Android viewer for Markdown documents. It is designe
 - Uses Android's document picker, so broad storage permission is not needed.
 - Works offline and requests no network or storage permissions.
 
-## Stability safeguards in 1.0.1
+## Stability safeguards in 1.0.2
 
-Version 1.0.1 hardens the paths used by complex Markdown documents:
+Version 1.0.2 fixes two Android 6 compatibility failures in addition to the preview safeguards introduced in 1.0.1:
 
+- Core-library desugaring supplies the Java functional interfaces used by the Markdown libraries on API 23.
+- Raw and native-preview text remain touch/key scrollable without programmatically enabling the visual `TextView` scrollbars that can leave a null drawable and crash Android 6 in `View.onDrawScrollBars()`.
 - Markdown parsing happens away from the Android UI thread.
-- Parser stack overflows, malformed input failures, and preview memory limits produce a readable fallback instead of terminating the activity.
+- Parser stack overflows, malformed input failures, linkage failures, and preview memory limits produce a readable fallback instead of terminating the activity.
 - Android WebView renderer exits are handled with `onRenderProcessGone`; the app switches to a native preview while preserving Raw view.
 - The app can start without a working WebView package and use native preview mode.
 - Raw text layout uses Android's simpler line-breaking strategy, with a bounded recovery path if the platform cannot lay out a document.
 - Regression tests cover long lines, large tables, fenced code, Unicode punctuation, and thousands of ordered-list markers.
+- An Android 6 emulator smoke test opens and draws a long Markdown document, exercises the API 23 runtime, and fails on an app fatal exception or the scrollbar crash signature.
 
 ## Install
 
-The GitHub Actions workflow builds `MD-View-v1.0.1.apk` for Android 6.0 or newer. Open the workflow artifact, download the APK, and permit installation from the browser or file manager when Android asks.
+The GitHub Actions workflow builds `MD-View-v1.0.2.apk` for Android 6.0 or newer. Open the workflow artifact, download the APK, and permit installation from the browser or file manager when Android asks.
 
 After installation, tap a Markdown document and choose **MD View** / **Open as Markdown**. You can choose **Always** in Android's chooser to make it the default. You can also launch MD View and press **Open**.
 
@@ -52,3 +55,4 @@ The Gradle release APK is unsigned. The included GitHub Actions workflow signs t
 - `app/src/test/java/dev/mdview/app/MarkdownRendererTest.java`: rendering and crash-regression tests.
 - `app/src/main/AndroidManifest.xml`: launcher and Markdown file associations.
 - `.github/workflows/build-apk.yml`: test, lint, build, signing, and verification workflow.
+- `.github/workflows/api23-smoke.yml`: Android 6 runtime and long-document drawing smoke test.
