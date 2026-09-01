@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - fix-api23-crash-v1.0.2
 
 permissions:
   contents: read
@@ -44,6 +45,12 @@ jobs:
         run: |
           set -euo pipefail
           gradle --no-daemon --stacktrace clean testReleaseUnitTest lintRelease assembleRelease
+          unzip -p app/build/outputs/apk/release/app-release-unsigned.apk 'classes*.dex' | strings > artifact-dex-strings.txt
+          grep -q 'Lj\$/util/function/' artifact-dex-strings.txt
+          if grep -q 'Ljava/util/function/' artifact-dex-strings.txt; then
+            echo "Unrewritten java.util.function references remain in the release DEX." >&2
+            exit 1
+          fi
 
       - name: Sign and verify APK
         shell: bash
@@ -53,7 +60,7 @@ jobs:
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
           OUTPUT_DIR="artifact"
-          OUTPUT_APK="$OUTPUT_DIR/MD-View-v1.0.1.apk"
+          OUTPUT_APK="$OUTPUT_DIR/MD-View-v1.0.2.apk"
           STORE_PASSWORD="mdview-build-2026"
 
           test -f "$UNSIGNED_APK"
@@ -89,9 +96,9 @@ jobs:
           "$BUILD_TOOLS/aapt" dump badging "$OUTPUT_APK" \
             | tee "$OUTPUT_DIR/apk-badging.txt"
           sha256sum "$OUTPUT_APK" | tee "$OUTPUT_DIR/SHA256SUMS.txt"
-          git archive --format=zip --output="$OUTPUT_DIR/MD-View-source-v1.0.1.zip" HEAD
+          git archive --format=zip --output="$OUTPUT_DIR/MD-View-source-v1.0.2.zip" HEAD
           {
-            echo "MD View 1.0.1"
+            echo "MD View 1.0.2"
             echo "Commit: $GITHUB_SHA"
             echo "Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "Minimum Android: 6.0 (API 23)"
@@ -103,6 +110,6 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MD-View-v1.0.1
+          name: MD-View-v1.0.2
           path: artifact/
           if-no-files-found: error
