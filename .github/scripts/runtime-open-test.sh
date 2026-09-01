@@ -54,6 +54,7 @@ adb install -r runtime-sender/build/outputs/apk/debug/runtime-sender-debug.apk
 # Copy the regression fixture into the sender application's private storage. The sender
 # then serves it through its own ContentProvider and grants MD View read access, exactly
 # as a normal Android file manager or document provider does.
+adb shell "run-as $sender_package mkdir -p files"
 cat "$fixture_file" | adb shell "run-as $sender_package sh -c 'cat > files/SKILL.md'"
 adb shell "run-as $sender_package sh -c 'wc -c files/SKILL.md'" \
   | tee "$artifact_dir/sender-fixture-size-api-${api_level}.txt"
