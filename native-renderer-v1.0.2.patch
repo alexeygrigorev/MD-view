@@ -1,0 +1,352 @@
+diff --git a/.github/workflows/build-apk.yml b/.github/workflows/build-apk.yml
+index 27ae783..d5308e2 100644
+--- a/.github/workflows/build-apk.yml
++++ b/.github/workflows/build-apk.yml
+@@ -5,6 +5,7 @@ on:
+   push:
+     branches:
+       - main
++      - fix-native-renderer-v1.0.2
+ 
+ permissions:
+   contents: read
+@@ -53,7 +54,7 @@ jobs:
+           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+           ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
+           OUTPUT_DIR="artifact"
+-          OUTPUT_APK="$OUTPUT_DIR/MD-View-v1.0.1.apk"
++          OUTPUT_APK="$OUTPUT_DIR/MD-View-Safe-v1.0.2.apk"
+           STORE_PASSWORD="mdview-build-2026"
+ 
+           test -f "$UNSIGNED_APK"
+@@ -89,9 +90,9 @@ jobs:
+           "$BUILD_TOOLS/aapt" dump badging "$OUTPUT_APK" \
+             | tee "$OUTPUT_DIR/apk-badging.txt"
+           sha256sum "$OUTPUT_APK" | tee "$OUTPUT_DIR/SHA256SUMS.txt"
+-          git archive --format=zip --output="$OUTPUT_DIR/MD-View-source-v1.0.1.zip" HEAD
++          git archive --format=zip --output="$OUTPUT_DIR/MD-View-Safe-source-v1.0.2.zip" HEAD
+           {
+-            echo "MD View 1.0.1"
++            echo "MD View Safe 1.0.2"
+             echo "Commit: $GITHUB_SHA"
+             echo "Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+             echo "Minimum Android: 6.0 (API 23)"
+@@ -103,6 +104,6 @@ jobs:
+       - name: Upload APK artifact
+         uses: actions/upload-artifact@v4
+         with:
+-          name: MD-View-v1.0.1
++          name: MD-View-Safe-v1.0.2
+           path: artifact/
+           if-no-files-found: error
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 3332daf..12d5451 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,14 +1,17 @@
+ # Changelog
+ 
+-## 1.0.1 — 2026-09-01
++## 1.0.2 — Safe renderer
+ 
+-- Prevented complex Markdown parsing failures from crashing the activity.
+-- Moved preview generation off the UI thread.
+-- Added bounded fallback rendering for unusually large or deeply nested documents.
+-- Handled Android WebView renderer termination and added a native preview fallback.
+-- Allowed installation and operation when WebView is unavailable.
+-- Added stress tests for complex Markdown structures and long lines.
++- Removes the system WebView from the preview path.
++- Renders Markdown with Android's native text stack in software mode.
++- Keeps Raw, Rendered, and Split modes.
++- Uses a separate application ID (`dev.mdview.app.safe`) so it can be installed alongside earlier test builds.
++- Adds a byte/line/structure-preserving Android runtime regression fixture for the reported document.
+ 
+-## 1.0.0 — 2026-09-01
++## 1.0.1
+ 
+-- Initial raw, rendered, and split Markdown viewer.
++- Added parser and WebView recovery paths.
++
++## 1.0.0
++
++- Initial release.
+diff --git a/README.md b/README.md
+index 8bcabe3..dd7be81 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,7 @@
+-# MD View for Android
++# MD View Safe for Android
++
++> **Safe 1.0.2:** the rendered pane uses Android native text rendering rather than WebView. This avoids device-specific WebView/GPU process failures while preserving Raw, Rendered, and Split modes.
++
+ 
+ MD View is a small, offline Android viewer for Markdown documents. It is designed for the case where Android's **Open with** chooser does not offer a useful Markdown app.
+ 
+@@ -14,7 +17,7 @@ MD View is a small, offline Android viewer for Markdown documents. It is designe
+ 
+ ## Stability safeguards in 1.0.1
+ 
+-Version 1.0.1 hardens the paths used by complex Markdown documents:
++Version 1.0.2 hardens the paths used by complex Markdown documents:
+ 
+ - Markdown parsing happens away from the Android UI thread.
+ - Parser stack overflows, malformed input failures, and preview memory limits produce a readable fallback instead of terminating the activity.
+diff --git a/app/build.gradle b/app/build.gradle
+index 033a630..ca4d8b4 100644
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -7,11 +7,11 @@ android {
+     compileSdk 36
+ 
+     defaultConfig {
+-        applicationId 'dev.mdview.app'
++        applicationId 'dev.mdview.app.safe'
+         minSdk 23
+         targetSdk 34
+-        versionCode 2
+-        versionName '1.0.1'
++        versionCode 3
++        versionName '1.0.2'
+ 
+         testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+     }
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index c04cb61..91fc666 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -1,12 +1,9 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ 
+-    <uses-feature
+-        android:name="android.software.webview"
+-        android:required="false" />
+-
+     <application
+         android:allowBackup="false"
++        android:hardwareAccelerated="false"
+         android:icon="@drawable/ic_app_icon"
+         android:label="@string/app_name"
+         android:supportsRtl="true"
+diff --git a/app/src/main/java/dev/mdview/app/MainActivity.java b/app/src/main/java/dev/mdview/app/MainActivity.java
+index 7b857a4..95f9e00 100644
+--- a/app/src/main/java/dev/mdview/app/MainActivity.java
++++ b/app/src/main/java/dev/mdview/app/MainActivity.java
+@@ -17,8 +17,8 @@ import android.os.Build;
+ import android.os.Bundle;
+ import android.provider.OpenableColumns;
+ import android.text.Html;
+-import android.text.Layout;
+ import android.text.TextUtils;
++import android.text.method.LinkMovementMethod;
+ import android.text.method.ScrollingMovementMethod;
+ import android.view.Gravity;
+ import android.view.View;
+@@ -285,7 +285,7 @@ public final class MainActivity extends Activity {
+         titleColumn.setGravity(Gravity.CENTER_VERTICAL);
+ 
+         titleView = new TextView(this);
+-        titleView.setText("MD View");
++        titleView.setText("MD View Safe");
+         titleView.setTextColor(textPrimaryColor);
+         titleView.setTextSize(19);
+         titleView.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+@@ -293,7 +293,7 @@ public final class MainActivity extends Activity {
+         titleView.setEllipsize(TextUtils.TruncateAt.END);
+ 
+         subtitleView = new TextView(this);
+-        subtitleView.setText("Raw + rendered Markdown");
++        subtitleView.setText("Native renderer • Raw + rendered Markdown");
+         subtitleView.setTextColor(textSecondaryColor);
+         subtitleView.setTextSize(12);
+         subtitleView.setSingleLine(true);
+@@ -422,10 +422,8 @@ public final class MainActivity extends Activity {
+         raw.setIncludeFontPadding(false);
+         raw.setLineSpacing(0f, 1.18f);
+         raw.setTextIsSelectable(true);
+-        raw.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
+-        raw.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
+-        raw.setHorizontallyScrolling(true);
+-        raw.setHorizontalScrollBarEnabled(true);
++        raw.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
++        raw.setHorizontalScrollBarEnabled(false);
+         raw.setVerticalScrollBarEnabled(true);
+         raw.setScrollbarFadingEnabled(false);
+         raw.setMovementMethod(ScrollingMovementMethod.getInstance());
+@@ -443,16 +441,12 @@ public final class MainActivity extends Activity {
+         renderedFallbackView.setVisibility(View.GONE);
+         host.addView(renderedFallbackView, frameMatch());
+ 
+-        try {
+-            renderedWebView = createRenderedWebView();
+-            host.addView(renderedWebView, frameMatch());
+-        } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+-            renderedWebView = null;
+-            webPreviewAvailable = false;
+-            nativePreviewReason =
+-                    "Android's WebView component is unavailable. Native preview mode is active.";
+-            showNativePreviewMessage(nativePreviewReason);
+-        }
++        // WebView is intentionally not constructed. Some Android devices terminate the entire
++        // application inside the system WebView/graphics stack before Java can catch an error.
++        // The native renderer keeps both panes in this application process and works offline.
++        renderedWebView = null;
++        webPreviewAvailable = false;
++        nativePreviewReason = null;
+         return host;
+     }
+ 
+@@ -467,11 +461,11 @@ public final class MainActivity extends Activity {
+         fallback.setIncludeFontPadding(false);
+         fallback.setLineSpacing(0f, 1.2f);
+         fallback.setTextIsSelectable(true);
+-        fallback.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
+-        fallback.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
++        fallback.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+         fallback.setVerticalScrollBarEnabled(true);
+         fallback.setScrollbarFadingEnabled(false);
+-        fallback.setMovementMethod(ScrollingMovementMethod.getInstance());
++        fallback.setLinksClickable(true);
++        fallback.setMovementMethod(LinkMovementMethod.getInstance());
+         fallback.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+         fallback.setContentDescription("Native rendered Markdown preview");
+         return fallback;
+@@ -748,8 +742,8 @@ public final class MainActivity extends Activity {
+         currentMarkdown = null;
+         currentRenderResult = null;
+         currentByteCount = 0;
+-        titleView.setText("MD View");
+-        subtitleView.setText("Raw + rendered Markdown");
++        titleView.setText("MD View Safe");
++        subtitleView.setText("Native renderer • Raw + rendered Markdown");
+         emptyState.setVisibility(View.VISIBLE);
+         splitContainer.setVisibility(View.GONE);
+         setLoading(false);
+@@ -947,26 +941,8 @@ public final class MainActivity extends Activity {
+             return;
+         }
+ 
+-        if (webPreviewAvailable && renderedWebView != null) {
+-            try {
+-                renderedFallbackView.setVisibility(View.GONE);
+-                renderedWebView.setVisibility(View.VISIBLE);
+-                renderedWebView.loadDataWithBaseURL(
+-                        PREVIEW_BASE_URL,
+-                        renderResult.htmlDocument,
+-                        "text/html",
+-                        StandardCharsets.UTF_8.name(),
+-                        null
+-                );
+-                return;
+-            } catch (RuntimeException | OutOfMemoryError error) {
+-                webPreviewAvailable = false;
+-                nativePreviewReason = "Android could not display the WebView preview. " +
+-                        "Native preview mode is active.";
+-            }
+-        }
+-
+-        showNativePreview(nativePreviewReason);
++        // Native-only preview: avoid system WebView and GPU-driver crashes on affected devices.
++        showNativePreview(renderResult.notice);
+     }
+ 
+     private void showNativePreview(String reason) {
+@@ -975,6 +951,7 @@ public final class MainActivity extends Activity {
+         }
+ 
+         String fragment = currentRenderResult == null ? "" : currentRenderResult.htmlFragment;
++        fragment = MarkdownRenderer.forNativeTextView(fragment);
+         if (!TextUtils.isEmpty(reason)) {
+             fragment = "<p><strong>Safe preview</strong><br>" +
+                     MarkdownRenderer.escapeHtml(reason) + "</p>" + fragment;
+@@ -989,7 +966,7 @@ public final class MainActivity extends Activity {
+                 nativeText = Html.fromHtml(fragment);
+             }
+             renderedFallbackView.setText(nativeText);
+-        } catch (RuntimeException | OutOfMemoryError error) {
++        } catch (RuntimeException | OutOfMemoryError | StackOverflowError | LinkageError error) {
+             String source = currentMarkdown == null ? "" : currentMarkdown;
+             int end = Math.min(source.length(), MAX_RAW_RECOVERY_CHARS);
+             renderedFallbackView.setText(source.substring(0, end));
+@@ -1106,7 +1083,7 @@ public final class MainActivity extends Activity {
+     }
+ 
+     private String formatDocumentSubtitle(int bytes) {
+-        return formatBytes(bytes) + "  •  Raw + rendered";
++        return formatBytes(bytes) + "  •  Native raw + rendered";
+     }
+ 
+     private String formatBytes(int bytes) {
+diff --git a/app/src/main/java/dev/mdview/app/MarkdownRenderer.java b/app/src/main/java/dev/mdview/app/MarkdownRenderer.java
+index 3c7e341..ff608e7 100644
+--- a/app/src/main/java/dev/mdview/app/MarkdownRenderer.java
++++ b/app/src/main/java/dev/mdview/app/MarkdownRenderer.java
+@@ -173,6 +173,35 @@ final class MarkdownRenderer {
+                 "</body></html>";
+     }
+ 
++
++    /**
++     * Adapts the generated fragment for Android's native Html parser. Android TextView does not
++     * understand table or code tags consistently, so add explicit separators and use supported
++     * tags before parsing. This method is deterministic and does not execute document content.
++     */
++    static String forNativeTextView(String fragment) {
++        if (fragment == null || fragment.isEmpty()) {
++            return "";
++        }
++        return fragment
++                .replace("<table>", "<p><tt>")
++                .replace("</table>", "</tt></p>")
++                .replace("<thead>", "")
++                .replace("</thead>", "")
++                .replace("<tbody>", "")
++                .replace("</tbody>", "")
++                .replace("<tr>", "")
++                .replace("</tr>", "<br>")
++                .replace("<th>", "")
++                .replace("</th>", " &nbsp;|&nbsp; ")
++                .replace("<td>", "")
++                .replace("</td>", " &nbsp;|&nbsp; ")
++                .replace("<code>", "<tt>")
++                .replace("</code>", "</tt>")
++                .replace("<del>", "<s>")
++                .replace("</del>", "</s>");
++    }
++
+     static String escapeHtml(String value) {
+         if (value == null || value.isEmpty()) {
+             return "";
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index a7fe7ba..ffe8499 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,5 +1,5 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <resources>
+-    <string name="app_name">MD View</string>
++    <string name="app_name">MD View Safe</string>
+     <string name="open_markdown">Open as Markdown</string>
+ </resources>
+diff --git a/app/src/test/java/dev/mdview/app/MarkdownRendererTest.java b/app/src/test/java/dev/mdview/app/MarkdownRendererTest.java
+index 9f9cb27..f647f42 100644
+--- a/app/src/test/java/dev/mdview/app/MarkdownRendererTest.java
++++ b/app/src/test/java/dev/mdview/app/MarkdownRendererTest.java
+@@ -105,4 +105,16 @@ public class MarkdownRendererTest {
+         assertTrue(MarkdownRenderer.escapeHtml("<&>\"'")
+                 .equals("&lt;&amp;&gt;&quot;&#39;"));
+     }
++
++    @Test
++    public void nativePreviewAddsReadableTableSeparatorsAndSupportedTags() {
++        String adapted = MarkdownRenderer.forNativeTextView(
++                "<table><tr><th>A</th><td>B</td></tr></table><code>x</code><del>y</del>"
++        );
++
++        assertFalse(adapted.contains("<table>"));
++        assertTrue(adapted.contains("|"));
++        assertTrue(adapted.contains("<tt>x</tt>"));
++        assertTrue(adapted.contains("<s>y</s>"));
++    }
+ }
