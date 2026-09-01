@@ -1,10 +1,9 @@
-name: Apply Android 6 scrollbar crash fix
+name: "Apply Android 6 scrollbar crash fix"
 
 on:
   push:
     branches:
       - fix-api23-crash-v1.0.2
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,7 +12,6 @@ jobs:
   apply:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     steps:
       - name: Check out fix branch
         uses: actions/checkout@v4
@@ -21,63 +19,31 @@ jobs:
           ref: fix-api23-crash-v1.0.2
           fetch-depth: 0
 
-      - name: Disable unsafe programmatic TextView scrollbars
+      - name: Disable unsafe TextView scrollbar drawables
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
+          FILE=app/src/main/java/dev/mdview/app/MainActivity.java
+          sed -i 's/raw.setHorizontalScrollBarEnabled(true);/raw.setHorizontalScrollBarEnabled(false);/' "$FILE"
+          sed -i 's/raw.setVerticalScrollBarEnabled(true);/raw.setVerticalScrollBarEnabled(false);/' "$FILE"
+          sed -i '/raw.setScrollbarFadingEnabled(false);/d' "$FILE"
+          sed -i 's/fallback.setVerticalScrollBarEnabled(true);/fallback.setVerticalScrollBarEnabled(false);/' "$FILE"
+          sed -i '/fallback.setScrollbarFadingEnabled(false);/d' "$FILE"
+          grep -q 'raw.setHorizontalScrollBarEnabled(false);' "$FILE"
+          grep -q 'raw.setVerticalScrollBarEnabled(false);' "$FILE"
+          grep -q 'fallback.setVerticalScrollBarEnabled(false);' "$FILE"
+          ! grep -q 'setScrollbarFadingEnabled(false);' "$FILE"
 
-          path = Path("app/src/main/java/dev/mdview/app/MainActivity.java")
-          source = path.read_text(encoding="utf-8")
-          original = source
-
-          source = source.replace(
-              """        raw.setHorizontallyScrolling(true);
-        raw.setHorizontalScrollBarEnabled(true);
-        raw.setVerticalScrollBarEnabled(true);
-        raw.setScrollbarFadingEnabled(false);
-        raw.setMovementMethod(ScrollingMovementMethod.getInstance());""",
-              """        raw.setHorizontallyScrolling(true);
-        // Android 6 can leave the drawable null for scrollbars enabled on a
-        // programmatically created TextView, then crash later in View.onDrawScrollBars().
-        // ScrollingMovementMethod provides touch/key scrolling without the unsafe drawable.
-        raw.setHorizontalScrollBarEnabled(false);
-        raw.setVerticalScrollBarEnabled(false);
-        raw.setMovementMethod(ScrollingMovementMethod.getInstance());""",
-              1,
-          )
-          source = source.replace(
-              """        fallback.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
-        fallback.setVerticalScrollBarEnabled(true);
-        fallback.setScrollbarFadingEnabled(false);
-        fallback.setMovementMethod(ScrollingMovementMethod.getInstance());""",
-              """        fallback.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
-        // See createRawTextView(): avoid Android 6's null ScrollBarDrawable crash.
-        fallback.setVerticalScrollBarEnabled(false);
-        fallback.setMovementMethod(ScrollingMovementMethod.getInstance());""",
-              1,
-          )
-
-          if source == original:
-              if "View.onDrawScrollBars()" in source and "setVerticalScrollBarEnabled(false)" in source:
-                  print("Scrollbar crash fix is already applied.")
-                  raise SystemExit(0)
-              raise SystemExit("Expected scrollbar setup was not found.")
-
-          path.write_text(source, encoding="utf-8")
-          PY
-
-      - name: Commit the source correction when needed
+      - name: Commit the correction
         shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet; then
-            echo "No source update is needed."
+            echo 'Scrollbar correction is already applied.'
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/src/main/java/dev/mdview/app/MainActivity.java
-          git commit -m "Prevent Android 6 null ScrollBarDrawable crash"
+          git commit -m 'Prevent Android 6 null ScrollBarDrawable crash'
           git push origin HEAD:fix-api23-crash-v1.0.2
