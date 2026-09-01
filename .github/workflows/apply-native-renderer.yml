@@ -1,4 +1,4 @@
-name: Apply native-only safe renderer
+name: Apply Android scrollbar crash fix
 
 on:
   push:
@@ -21,35 +21,47 @@ jobs:
           ref: fix-native-renderer-v1.0.2
           fetch-depth: 0
 
-      - name: Apply app and test changes
+      - name: Disable the crashing framework scrollbar path
         shell: bash
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
 
-          if grep -q "applicationId 'dev.mdview.app.safe'" app/build.gradle; then
-            echo "The native-only renderer is already applied."
+          path = Path("app/src/main/java/dev/mdview/app/MainActivity.java")
+          source = path.read_text(encoding="utf-8")
+          original = source
+
+          source = source.replace(
+              "raw.setVerticalScrollBarEnabled(true);",
+              "raw.setVerticalScrollBarEnabled(false);"
+          )
+          source = source.replace(
+              "raw.setScrollbarFadingEnabled(false);",
+              "// Android 15 can dereference a null ScrollBarDrawable in software mode.\n"
+              "        // Scrolling remains available through the movement method without the indicator."
+          )
+          source = source.replace(
+              "fallback.setVerticalScrollBarEnabled(true);",
+              "fallback.setVerticalScrollBarEnabled(false);"
+          )
+          source = source.replace(
+              "fallback.setScrollbarFadingEnabled(false);",
+              "// Keep native preview scrolling, but do not ask the framework to draw a scrollbar."
+          )
+
+          if source == original:
+              print("The scrollbar crash correction is already applied.")
+          else:
+              path.write_text(source, encoding="utf-8")
+          PY
+
+          if git diff --quiet; then
             exit 0
           fi
 
-          git apply --check native-renderer-v1.0.2.patch
-          git apply native-renderer-v1.0.2.patch
-
-          # GitHub's workflow token cannot modify workflow definitions. Keep those files unchanged;
-          # they are updated separately through the repository connector after this app commit.
-          git restore --source=HEAD -- .github/workflows/build-apk.yml
-
-          sed -i 's/package_name="dev.mdview.app"/package_name="dev.mdview.app.safe"/' \
-            .github/scripts/runtime-open-test.sh
-          sed -i 's#activity_name="dev.mdview.app/.MainActivity"#activity_name="dev.mdview.app.safe/dev.mdview.app.MainActivity"#' \
-            .github/scripts/runtime-open-test.sh
-          sed -i 's/dev\\\.mdview\\\.app/dev\\\.mdview\\\.app\\\.safe/g' \
-            .github/scripts/runtime-open-test.sh
-
-          rm -f app/src/androidTest/java/dev/mdview/app/MainActivityInstrumentedTest.java
-          rm -f native-renderer-v1.0.2.patch
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add --all
-          git commit -m "Add native-only safe renderer for device-specific crashes"
+          git add app/src/main/java/dev/mdview/app/MainActivity.java
+          git commit -m "Disable TextView scrollbars that crash Android software drawing"
           git push origin HEAD:fix-native-renderer-v1.0.2
