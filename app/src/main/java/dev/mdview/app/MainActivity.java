@@ -424,8 +424,9 @@ public final class MainActivity extends Activity {
         raw.setTextIsSelectable(true);
         raw.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
         raw.setHorizontalScrollBarEnabled(false);
-        raw.setVerticalScrollBarEnabled(true);
-        raw.setScrollbarFadingEnabled(false);
+        raw.setVerticalScrollBarEnabled(false);
+        // Android 15 can dereference a null ScrollBarDrawable in software mode.
+        // Scrolling remains available through the movement method without the indicator.
         raw.setMovementMethod(ScrollingMovementMethod.getInstance());
         raw.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
         raw.setContentDescription("Raw Markdown source");
@@ -462,8 +463,8 @@ public final class MainActivity extends Activity {
         fallback.setLineSpacing(0f, 1.2f);
         fallback.setTextIsSelectable(true);
         fallback.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-        fallback.setVerticalScrollBarEnabled(true);
-        fallback.setScrollbarFadingEnabled(false);
+        fallback.setVerticalScrollBarEnabled(false);
+        // Keep native preview scrolling, but do not ask the framework to draw a scrollbar.
         fallback.setLinksClickable(true);
         fallback.setMovementMethod(LinkMovementMethod.getInstance());
         fallback.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
