@@ -1,0 +1,45 @@
+name: Apply version 1.0.2 runtime fix
+
+on:
+  push:
+    branches:
+      - fix-api23-crash-v1.0.2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix-api23-crash-v1.0.2
+          fetch-depth: 0
+
+      - name: Apply the compatibility patch once
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git apply --check v1.0.2-runtime-fix.patch; then
+            git apply v1.0.2-runtime-fix.patch
+          elif git apply --reverse --check v1.0.2-runtime-fix.patch; then
+            echo "Patch is already applied."
+            exit 0
+          else
+            echo "Patch neither applies nor appears already applied." >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle \
+            app/src/main/java/dev/mdview/app/MarkdownRenderer.java \
+            app/src/main/java/dev/mdview/app/MainActivity.java \
+            .github/workflows/build-apk.yml
+          git commit -m "Fix API 23 Markdown crash with core-library desugaring"
+          git push origin HEAD:fix-api23-crash-v1.0.2
