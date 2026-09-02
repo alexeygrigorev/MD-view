@@ -171,8 +171,8 @@ jobs:
           - Raw Markdown word-wrap toggle
           - Direct APK download; no ZIP extraction required
 
-          APK SHA-256: `${{ steps.apk.outputs.sha256 }}`
-          Signing certificate SHA-256: `${{ steps.release_key.outputs.certificate_sha256 }}`
+          APK SHA-256: ${{ steps.apk.outputs.sha256 }}
+          Signing certificate SHA-256: ${{ steps.release_key.outputs.certificate_sha256 }}
           EOF
 
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -200,5 +200,5 @@ jobs:
             echo
             echo "[$(basename "$APK")]($DIRECT_URL)"
             echo
-            echo "SHA-256: `${{ steps.apk.outputs.sha256 }}`"
+            echo "SHA-256: ${{ steps.apk.outputs.sha256 }}"
           } >> "$GITHUB_STEP_SUMMARY"
