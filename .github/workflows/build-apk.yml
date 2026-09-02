@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Read application version
         id: version
@@ -52,13 +52,13 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.13'
 
@@ -180,7 +180,7 @@ jobs:
           } > "$OUTPUT_DIR/build-info.txt"
 
       - name: Upload unsigned CI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MD-View-v${{ steps.version.outputs.name }}-unsigned
           path: artifact-unsigned/
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload signed updateable APK
         if: steps.signing.outputs.available == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MD-View-v${{ steps.version.outputs.name }}-signed
           path: artifact-signed/
