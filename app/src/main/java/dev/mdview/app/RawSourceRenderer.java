@@ -17,10 +17,10 @@ final class RawSourceRenderer {
         String foreground = cssColor(foregroundColor);
         String escapedSource = MarkdownRenderer.escapeHtml(source == null ? "" : source);
         String sourceLayout = wordWrap
-                ? "display:block;width:100%;white-space:pre-wrap;word-break:break-word;" +
-                "overflow-wrap:anywhere;"
+                ? "display:block;width:100%;max-width:100%;white-space:pre-wrap;" +
+                "word-break:break-word;word-wrap:break-word;overflow-wrap:break-word;"
                 : "display:inline-block;min-width:100%;white-space:pre;word-break:normal;" +
-                "overflow-wrap:normal;";
+                "word-wrap:normal;overflow-wrap:normal;";
 
         String css = "html{color-scheme:light dark;}" +
                 "html,body{box-sizing:border-box;margin:0;min-height:100%;" +
