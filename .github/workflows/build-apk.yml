@@ -11,7 +11,6 @@ on:
   push:
     branches:
       - main
-      - raw-webview-persistent-signing-v1.0.3
 
 permissions:
   contents: read
