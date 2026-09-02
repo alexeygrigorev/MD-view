@@ -1,19 +1,14 @@
-name: Build installable MD View APK
+name: Build and publish MD View APK
 
 on:
   workflow_dispatch:
-    inputs:
-      require_signed_apk:
-        description: Fail the manual run when the signing secret is not configured
-        required: true
-        default: true
-        type: boolean
   push:
     branches:
       - main
+      - word-wrap-direct-apk-v1.0.4
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -25,6 +20,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Read application version
         id: version
@@ -37,18 +34,15 @@ jobs:
           test -n "$VERSION_CODE"
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Detect persistent signing configuration
-        id: signing
+      - name: Require persistent signing secret
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${MD_VIEW_SIGNING_SECRET:-}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            echo "Persistent signing secret is configured."
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "Persistent signing secret is not configured; only the unsigned CI artifact will be produced."
+          if [ -z "${MD_VIEW_SIGNING_SECRET:-}" ]; then
+            echo "Repository secret MD_VIEW_SIGNING_SECRET is missing." >&2
+            exit 1
           fi
 
       - name: Set up JDK 17
@@ -77,24 +71,13 @@ jobs:
         run: |
           set -euo pipefail
           gradle --no-daemon --stacktrace clean testReleaseUnitTest lintRelease assembleRelease
-          mkdir -p artifact-unsigned
-          cp app/build/outputs/apk/release/app-release-unsigned.apk \
-            "artifact-unsigned/MD-View-v${{ steps.version.outputs.name }}-unsigned.apk"
+
           unzip -p app/build/outputs/apk/release/app-release-unsigned.apk 'classes*.dex' \
-            | strings > artifact-unsigned/dex-strings.txt
-          DESUGARED_COUNT="$(grep -c 'Lj\$/util/function/' artifact-unsigned/dex-strings.txt || true)"
-          DIRECT_COUNT="$(grep -c 'Ljava/util/function/' artifact-unsigned/dex-strings.txt || true)"
-          {
-            echo "Version name: ${{ steps.version.outputs.name }}"
-            echo "Version code: ${{ steps.version.outputs.code }}"
-            echo "Desugared j$/util/function descriptors: $DESUGARED_COUNT"
-            echo "Direct java/util/function descriptors: $DIRECT_COUNT"
-            echo "Authoritative API 23 check: Android 6 runtime smoke workflow."
-          } > artifact-unsigned/build-info.txt
+            | strings > "$RUNNER_TEMP/dex-strings.txt"
+          DESUGARED_COUNT="$(grep -c 'Lj\$/util/function/' "$RUNNER_TEMP/dex-strings.txt" || true)"
           test "$DESUGARED_COUNT" -gt 0
 
       - name: Restore and verify persistent release key
-        if: steps.signing.outputs.available == 'true'
         id: release_key
         shell: bash
         run: |
@@ -130,15 +113,15 @@ jobs:
           echo "path=$RELEASE_KEY" >> "$GITHUB_OUTPUT"
           echo "certificate_sha256=$ACTUAL_CERT_SHA256" >> "$GITHUB_OUTPUT"
 
-      - name: Sign, verify, and package release APK
-        if: steps.signing.outputs.available == 'true'
+      - name: Sign and verify APK
+        id: apk
         shell: bash
         run: |
           set -euo pipefail
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED_APK="$RUNNER_TEMP/app-release-aligned.apk"
-          OUTPUT_DIR="artifact-signed"
+          OUTPUT_DIR="$GITHUB_WORKSPACE/release-output"
           OUTPUT_APK="$OUTPUT_DIR/MD-View-v${{ steps.version.outputs.name }}.apk"
 
           mkdir -p "$OUTPUT_DIR"
@@ -161,44 +144,61 @@ jobs:
           "$BUILD_TOOLS/zipalign" -c -p 4 "$OUTPUT_APK"
           "$BUILD_TOOLS/aapt" dump badging "$OUTPUT_APK" \
             | tee "$OUTPUT_DIR/apk-badging.txt"
-          sha256sum "$OUTPUT_APK" | tee "$OUTPUT_DIR/SHA256SUMS.txt"
-          cp release-signing/certificate.pem "$OUTPUT_DIR/release-certificate.pem"
-          printf '%s\n' "${{ steps.release_key.outputs.certificate_sha256 }}" \
-            > "$OUTPUT_DIR/release-certificate.sha256"
-          git archive --format=zip \
-            --output="$OUTPUT_DIR/MD-View-source-v${{ steps.version.outputs.name }}.zip" HEAD
-          {
-            echo "MD View ${{ steps.version.outputs.name }}"
-            echo "Version code: ${{ steps.version.outputs.code }}"
-            echo "Commit: $GITHUB_SHA"
-            echo "Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "Minimum Android: 6.0 (API 23)"
-            echo "Target Android API: 34"
-            echo "Compile Android API: 36"
-            echo "Signing certificate SHA-256: ${{ steps.release_key.outputs.certificate_sha256 }}"
-            echo "Signing: persistent encrypted repository key + GitHub Actions secret"
-          } > "$OUTPUT_DIR/build-info.txt"
 
-      - name: Upload unsigned CI artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: MD-View-v${{ steps.version.outputs.name }}-unsigned
-          path: artifact-unsigned/
-          if-no-files-found: error
-          retention-days: 14
+          APK_SHA256="$(sha256sum "$OUTPUT_APK" | awk '{print $1}')"
+          printf '%s  %s\n' "$APK_SHA256" "$(basename "$OUTPUT_APK")" \
+            > "$OUTPUT_DIR/SHA256SUMS.txt"
+          echo "path=$OUTPUT_APK" >> "$GITHUB_OUTPUT"
+          echo "sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
 
-      - name: Upload signed updateable APK
-        if: steps.signing.outputs.available == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: MD-View-v${{ steps.version.outputs.name }}-signed
-          path: artifact-signed/
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Require signed APK for manual release
-        if: github.event_name == 'workflow_dispatch' && inputs.require_signed_apk && steps.signing.outputs.available != 'true'
+      - name: Publish direct APK download
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          echo "Add the MD_VIEW_SIGNING_SECRET repository Actions secret, then rerun this workflow." >&2
-          exit 1
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          APK="${{ steps.apk.outputs.path }}"
+          CHECKSUMS="$GITHUB_WORKSPACE/release-output/SHA256SUMS.txt"
+          NOTES="$RUNNER_TEMP/release-notes.md"
+
+          cat > "$NOTES" <<EOF
+          ## MD View ${{ steps.version.outputs.name }}
+
+          - Android 6.0 or newer
+          - Persistent update-compatible signature
+          - Raw Markdown word-wrap toggle
+          - Direct APK download; no ZIP extraction required
+
+          APK SHA-256: `${{ steps.apk.outputs.sha256 }}`
+          Signing certificate SHA-256: `${{ steps.release_key.outputs.certificate_sha256 }}`
+          EOF
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "MD View ${{ steps.version.outputs.name }}" \
+              --notes-file "$NOTES"
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "MD View ${{ steps.version.outputs.name }}" \
+              --notes-file "$NOTES"
+          fi
+
+          gh release upload "$TAG" \
+            "$APK" \
+            "$CHECKSUMS" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          DIRECT_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$(basename "$APK")"
+          {
+            echo "## Direct APK"
+            echo
+            echo "[$(basename "$APK")]($DIRECT_URL)"
+            echo
+            echo "SHA-256: `${{ steps.apk.outputs.sha256 }}`"
+          } >> "$GITHUB_STEP_SUMMARY"
