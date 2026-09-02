@@ -1,0 +1,50 @@
+name: Apply version 1.0.4 source migration
+
+on:
+  push:
+    branches:
+      - word-wrap-direct-apk-v1.0.4
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v7
+        with:
+          ref: word-wrap-direct-apk-v1.0.4
+          fetch-depth: 0
+
+      - name: Apply Raw word-wrap patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git apply --check .migration/v1.0.4-word-wrap.patch; then
+            git apply .migration/v1.0.4-word-wrap.patch
+          elif git apply --reverse --check .migration/v1.0.4-word-wrap.patch; then
+            echo "Patch is already applied."
+            exit 0
+          else
+            echo "Patch could not be applied cleanly." >&2
+            exit 1
+          fi
+
+      - name: Commit application changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No source update is needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/dev/mdview/app/MainActivity.java
+          git commit -m "Add persistent Raw word-wrap option"
+          git push origin HEAD:word-wrap-direct-apk-v1.0.4
