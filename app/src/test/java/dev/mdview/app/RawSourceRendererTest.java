@@ -34,9 +34,11 @@ public class RawSourceRendererTest {
 
         assertTrue(html.contains("display:block"));
         assertTrue(html.contains("width:100%"));
+        assertTrue(html.contains("max-width:100%"));
         assertTrue(html.contains("white-space:pre-wrap"));
         assertTrue(html.contains("word-break:break-word"));
-        assertTrue(html.contains("overflow-wrap:anywhere"));
+        assertTrue(html.contains("word-wrap:break-word"));
+        assertTrue(html.contains("overflow-wrap:break-word"));
         assertFalse(html.contains("display:inline-block"));
     }
 
