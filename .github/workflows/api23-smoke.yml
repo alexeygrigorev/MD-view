@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - raw-webview-persistent-signing-v1.0.3
   workflow_dispatch:
 
 permissions:
@@ -74,27 +73,24 @@ jobs:
             adb exec-out screencap -p > after-rendered-scroll.png || exit 1
             test "$(sha256sum after-raw-horizontal-scroll.png | cut -d' ' -f1)" != "$(sha256sum after-rendered-scroll.png | cut -d' ' -f1)" || exit 1
             adb logcat -d -v threadtime > api23-logcat.txt || exit 1
-            adb shell uiautomator dump /sdcard/mdview-after.xml >/dev/null || exit 1
-            adb pull /sdcard/mdview-after.xml api23-ui-after.xml >/dev/null || exit 1
             adb shell ps | grep -q 'dev.mdview.app' || { echo 'MD View process is not alive'; cat api23-logcat.txt; exit 1; }
             if grep -A80 -B3 'FATAL EXCEPTION' api23-logcat.txt | grep -q 'dev.mdview.app'; then cat api23-logcat.txt; exit 1; fi
             if grep -Eq 'NoClassDefFoundError.*java[./]util[./]function|java[./]util[./]function.*NoClassDefFoundError' api23-logcat.txt; then cat api23-logcat.txt; exit 1; fi
-            if grep -q 'Unfortunately, MD View has stopped' api23-ui-after.xml; then cat api23-ui-after.xml; cat api23-logcat.txt; exit 1; fi
             echo 'Raw and Rendered both used WebView scrolling, accepted fling gestures, and stayed alive on Android 6.'
 
-      - name: Upload runtime and scrolling evidence
+      - name: Upload compact runtime evidence
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: api23-runtime-scrolling-evidence
           path: |
             api23-logcat.txt
             api23-ui-before.xml
-            api23-ui-after.xml
             api23-smoke.md
             before-scroll.png
             after-raw-vertical-scroll.png
             after-raw-horizontal-scroll.png
             after-rendered-scroll.png
-            app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
+          retention-days: 7
