@@ -1,0 +1,42 @@
+name: Export Android APK signing tools
+
+on:
+  push:
+    branches:
+      - diagnostics-build-tools-v103
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install and package build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "build-tools;35.0.0"
+          mkdir -p package
+          cp -a "$ANDROID_HOME/build-tools/35.0.0" package/build-tools-35.0.0
+          tar -czf android-build-tools-35.0.0.tar.gz -C package build-tools-35.0.0
+          sha256sum android-build-tools-35.0.0.tar.gz > android-build-tools-35.0.0.sha256
+          ls -lh android-build-tools-35.0.0.tar.gz
+
+      - name: Upload signing tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-tools-35.0.0
+          path: |
+            android-build-tools-35.0.0.tar.gz
+            android-build-tools-35.0.0.sha256
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
