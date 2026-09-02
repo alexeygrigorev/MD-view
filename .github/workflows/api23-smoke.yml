@@ -48,44 +48,31 @@ jobs:
             head -c 1200 /dev/zero | tr '\0' 'x' >> api23-smoke.md
             printf '\n\n' >> api23-smoke.md
             seq 1 700 | sed 's/^/- rendered and raw line /' >> api23-smoke.md
-
             adb install -r app/build/outputs/apk/debug/app-debug.apk || exit 1
             adb push api23-smoke.md /data/local/tmp/api23-smoke.md || exit 1
             adb shell run-as dev.mdview.app mkdir -p files || exit 1
             adb shell run-as dev.mdview.app cp /data/local/tmp/api23-smoke.md files/api23-smoke.md || exit 1
             adb logcat -c || exit 1
             adb shell am force-stop dev.mdview.app || exit 1
-            adb shell am start -W \
-              -n dev.mdview.app/.MainActivity \
-              -a android.intent.action.VIEW \
-              -d file:///data/data/dev.mdview.app/files/api23-smoke.md \
-              -t text/markdown || exit 1
+            adb shell am start -W -n dev.mdview.app/.MainActivity -a android.intent.action.VIEW -d file:///data/data/dev.mdview.app/files/api23-smoke.md -t text/markdown || exit 1
             sleep 10
-
             adb shell uiautomator dump /sdcard/mdview-before.xml >/dev/null || exit 1
             adb pull /sdcard/mdview-before.xml api23-ui-before.xml >/dev/null || exit 1
             grep -q 'content-desc="Raw Markdown source"' api23-ui-before.xml || { cat api23-ui-before.xml; exit 1; }
             grep -q 'content-desc="Rendered Markdown preview"' api23-ui-before.xml || { cat api23-ui-before.xml; exit 1; }
-
             adb exec-out screencap -p > before-scroll.png || exit 1
             adb shell input swipe 720 1180 720 620 320 || exit 1
             sleep 2
             adb exec-out screencap -p > after-raw-vertical-scroll.png || exit 1
-            test "$(sha256sum before-scroll.png | cut -d' ' -f1)" != \
-                 "$(sha256sum after-raw-vertical-scroll.png | cut -d' ' -f1)" || exit 1
-
+            test "$(sha256sum before-scroll.png | cut -d' ' -f1)" != "$(sha256sum after-raw-vertical-scroll.png | cut -d' ' -f1)" || exit 1
             adb shell input swipe 1120 760 260 760 320 || exit 1
             sleep 2
             adb exec-out screencap -p > after-raw-horizontal-scroll.png || exit 1
-            test "$(sha256sum after-raw-vertical-scroll.png | cut -d' ' -f1)" != \
-                 "$(sha256sum after-raw-horizontal-scroll.png | cut -d' ' -f1)" || exit 1
-
+            test "$(sha256sum after-raw-vertical-scroll.png | cut -d' ' -f1)" != "$(sha256sum after-raw-horizontal-scroll.png | cut -d' ' -f1)" || exit 1
             adb shell input swipe 720 2280 720 1660 320 || exit 1
             sleep 2
             adb exec-out screencap -p > after-rendered-scroll.png || exit 1
-            test "$(sha256sum after-raw-horizontal-scroll.png | cut -d' ' -f1)" != \
-                 "$(sha256sum after-rendered-scroll.png | cut -d' ' -f1)" || exit 1
-
+            test "$(sha256sum after-raw-horizontal-scroll.png | cut -d' ' -f1)" != "$(sha256sum after-rendered-scroll.png | cut -d' ' -f1)" || exit 1
             adb logcat -d -v threadtime > api23-logcat.txt || exit 1
             adb shell uiautomator dump /sdcard/mdview-after.xml >/dev/null || exit 1
             adb pull /sdcard/mdview-after.xml api23-ui-after.xml >/dev/null || exit 1
