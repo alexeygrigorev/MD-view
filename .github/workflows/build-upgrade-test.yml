@@ -1,0 +1,45 @@
+name: Build higher-version APK for update test
+
+on:
+  push:
+    branches:
+      - diagnostics-upgrade-apk-v103
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - name: Test and build
+        run: gradle --no-daemon clean testReleaseUnitTest lintRelease assembleRelease
+      - name: Collect unsigned upgrade test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir artifact
+          cp app/build/outputs/apk/release/app-release-unsigned.apk artifact/MD-View-v1.0.4-upgrade-test-unsigned.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MD-View-v1.0.4-upgrade-test-unsigned
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 1
