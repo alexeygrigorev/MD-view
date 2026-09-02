@@ -52,11 +52,14 @@ public final class MainActivity extends Activity {
     private static final int MAX_RAW_RECOVERY_CHARS = 500_000;
     private static final int MAX_SAVED_TEXT_BYTES = 384 * 1024;
     private static final String PREVIEW_BASE_URL = "https://mdview.invalid/";
+    private static final String PREFERENCES_NAME = "md_view_preferences";
+    private static final String PREFERENCE_RAW_WORD_WRAP = "raw_word_wrap";
 
     private static final String STATE_MODE = "mode";
     private static final String STATE_URI = "uri";
     private static final String STATE_NAME = "name";
     private static final String STATE_TEXT = "text";
+    private static final String STATE_RAW_WORD_WRAP = "raw_word_wrap";
 
     private enum Mode {
         RAW,
@@ -95,6 +98,7 @@ public final class MainActivity extends Activity {
     private TextView rawModeButton;
     private TextView renderedModeButton;
     private TextView splitModeButton;
+    private TextView rawWrapButton;
 
     private Mode currentMode = Mode.SPLIT;
     private String currentUriString;
@@ -104,6 +108,7 @@ public final class MainActivity extends Activity {
     private boolean documentLoaded;
     private boolean rawWebViewAvailable = true;
     private boolean webPreviewAvailable = true;
+    private boolean rawWordWrap;
     private String nativePreviewReason;
     private MarkdownRenderer.RenderResult currentRenderResult;
 
@@ -112,6 +117,11 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         loadThemeColors();
         configureSystemBars();
+        rawWordWrap = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                .getBoolean(PREFERENCE_RAW_WORD_WRAP, false);
+        if (savedInstanceState != null) {
+            rawWordWrap = savedInstanceState.getBoolean(STATE_RAW_WORD_WRAP, rawWordWrap);
+        }
         buildInterface();
 
         if (savedInstanceState != null) {
@@ -146,6 +156,7 @@ public final class MainActivity extends Activity {
         outState.putString(STATE_MODE, currentMode.name());
         outState.putString(STATE_URI, currentUriString);
         outState.putString(STATE_NAME, currentName);
+        outState.putBoolean(STATE_RAW_WORD_WRAP, rawWordWrap);
 
         if (currentUriString == null && currentMarkdown != null && currentByteCount <= MAX_SAVED_TEXT_BYTES) {
             outState.putString(STATE_TEXT, currentMarkdown);
@@ -334,6 +345,7 @@ public final class MainActivity extends Activity {
         rawModeButton = createModeButton("Raw", Mode.RAW);
         renderedModeButton = createModeButton("Rendered", Mode.RENDERED);
         splitModeButton = createModeButton("Split", Mode.SPLIT);
+        rawWrapButton = createRawWrapButton();
 
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
                 0,
@@ -350,7 +362,15 @@ public final class MainActivity extends Activity {
         );
         renderedParams.setMarginEnd(dp(6));
         modeBar.addView(renderedModeButton, renderedParams);
-        modeBar.addView(splitModeButton, new LinearLayout.LayoutParams(0, dp(40), 1f));
+
+        LinearLayout.LayoutParams splitParams = new LinearLayout.LayoutParams(
+                0,
+                dp(40),
+                1f
+        );
+        splitParams.setMarginEnd(dp(6));
+        modeBar.addView(splitModeButton, splitParams);
+        modeBar.addView(rawWrapButton, new LinearLayout.LayoutParams(0, dp(40), 1f));
 
         updateModeButtons();
         return modeBar;
@@ -368,6 +388,23 @@ public final class MainActivity extends Activity {
         button.setOnClickListener(view -> setMode(mode));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             button.setTooltipText(text + " view");
+        }
+        return button;
+    }
+
+    private TextView createRawWrapButton() {
+        TextView button = new TextView(this);
+        button.setText("Wrap");
+        button.setTextSize(14);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(8), 0, dp(8), 0);
+        button.setClickable(true);
+        button.setFocusable(true);
+        button.setOnClickListener(view -> toggleRawWordWrap());
+        button.setContentDescription("Raw word wrap " + (rawWordWrap ? "on" : "off"));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            button.setTooltipText("Toggle Raw word wrap");
         }
         return button;
     }
@@ -446,7 +483,8 @@ public final class MainActivity extends Activity {
         raw.setTextIsSelectable(true);
         raw.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
         raw.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
-        raw.setHorizontallyScrolling(true);
+        raw.setSingleLine(false);
+        raw.setHorizontallyScrolling(!rawWordWrap);
         raw.setHorizontalScrollBarEnabled(false);
         raw.setVerticalScrollBarEnabled(false);
         raw.setMovementMethod(ScrollingMovementMethod.getInstance());
@@ -730,6 +768,7 @@ public final class MainActivity extends Activity {
         styleModeButton(rawModeButton, currentMode == Mode.RAW);
         styleModeButton(renderedModeButton, currentMode == Mode.RENDERED);
         styleModeButton(splitModeButton, currentMode == Mode.SPLIT);
+        updateRawWrapButton();
     }
 
     private void styleModeButton(TextView button, boolean selected) {
@@ -744,6 +783,39 @@ public final class MainActivity extends Activity {
                 accentColor
         ));
         button.setSelected(selected);
+    }
+
+    private void toggleRawWordWrap() {
+        rawWordWrap = !rawWordWrap;
+        getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREFERENCE_RAW_WORD_WRAP, rawWordWrap)
+                .apply();
+        updateRawWrapButton();
+        applyRawFallbackWordWrap();
+
+        if (documentLoaded && currentMarkdown != null) {
+            setRawTextSafely(currentMarkdown);
+        }
+        showToast(rawWordWrap ? "Raw word wrap is on." : "Raw word wrap is off.");
+    }
+
+    private void updateRawWrapButton() {
+        if (rawWrapButton == null) {
+            return;
+        }
+        styleModeButton(rawWrapButton, rawWordWrap);
+        rawWrapButton.setContentDescription("Raw word wrap " + (rawWordWrap ? "on" : "off"));
+    }
+
+    private void applyRawFallbackWordWrap() {
+        if (rawTextView == null) {
+            return;
+        }
+        rawTextView.setSingleLine(false);
+        rawTextView.setHorizontallyScrolling(!rawWordWrap);
+        rawTextView.requestLayout();
+        rawTextView.invalidate();
     }
 
     private void applyMode() {
@@ -978,13 +1050,19 @@ public final class MainActivity extends Activity {
     }
 
     private void setRawTextSafely(String source) {
+        applyRawFallbackWordWrap();
         if (rawWebViewAvailable && rawWebView != null) {
             try {
                 rawTextView.setVisibility(View.GONE);
                 rawWebView.setVisibility(View.VISIBLE);
                 rawWebView.loadDataWithBaseURL(
                         PREVIEW_BASE_URL,
-                        RawSourceRenderer.toHtmlDocument(source, paneSurfaceColor, textPrimaryColor),
+                        RawSourceRenderer.toHtmlDocument(
+                                source,
+                                paneSurfaceColor,
+                                textPrimaryColor,
+                                rawWordWrap
+                        ),
                         "text/html",
                         StandardCharsets.UTF_8.name(),
                         null
@@ -1000,6 +1078,7 @@ public final class MainActivity extends Activity {
 
     private void showRawTextFallback(String source) {
         String safeSource = source == null ? "" : source;
+        applyRawFallbackWordWrap();
         try {
             rawTextView.setText(safeSource);
         } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
