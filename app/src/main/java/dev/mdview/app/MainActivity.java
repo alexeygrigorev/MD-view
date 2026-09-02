@@ -82,11 +82,13 @@ public final class MainActivity extends Activity {
     private LinearLayout rawPane;
     private LinearLayout renderedPane;
     private FrameLayout contentHolder;
+    private FrameLayout rawContentHost;
     private FrameLayout renderedContentHost;
     private View emptyState;
     private View loadingOverlay;
     private TextView rawTextView;
     private TextView renderedFallbackView;
+    private WebView rawWebView;
     private WebView renderedWebView;
     private TextView titleView;
     private TextView subtitleView;
@@ -100,6 +102,7 @@ public final class MainActivity extends Activity {
     private String currentMarkdown;
     private int currentByteCount;
     private boolean documentLoaded;
+    private boolean rawWebViewAvailable = true;
     private boolean webPreviewAvailable = true;
     private String nativePreviewReason;
     private MarkdownRenderer.RenderResult currentRenderResult;
@@ -159,15 +162,10 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         loadGeneration.incrementAndGet();
         fileExecutor.shutdownNow();
-        if (renderedWebView != null) {
-            try {
-                renderedWebView.stopLoading();
-                renderedWebView.loadUrl("about:blank");
-                renderedWebView.destroy();
-            } catch (RuntimeException | LinkageError ignored) {
-                // WebView may already be unavailable while the activity is being destroyed.
-            }
-        }
+        destroyWebViewSafely(rawWebView);
+        destroyWebViewSafely(renderedWebView);
+        rawWebView = null;
+        renderedWebView = null;
         super.onDestroy();
     }
 
@@ -257,9 +255,9 @@ public final class MainActivity extends Activity {
         splitContainer.setDividerPadding(0);
         contentHolder.addView(splitContainer, frameMatch());
 
-        rawTextView = createRawTextView();
+        rawContentHost = createRawContentHost();
         renderedContentHost = createRenderedContentHost();
-        rawPane = createPane("RAW", rawTextView);
+        rawPane = createPane("RAW", rawContentHost);
         renderedPane = createPane("RENDERED", renderedContentHost);
         splitContainer.addView(rawPane);
         splitContainer.addView(renderedPane);
@@ -414,6 +412,26 @@ public final class MainActivity extends Activity {
         return pane;
     }
 
+    private FrameLayout createRawContentHost() {
+        FrameLayout host = new FrameLayout(this);
+        host.setBackgroundColor(paneSurfaceColor);
+        rawContentHost = host;
+
+        rawTextView = createRawTextView();
+        rawTextView.setVisibility(View.GONE);
+        host.addView(rawTextView, frameMatch());
+
+        try {
+            rawWebView = createRawWebView();
+            host.addView(rawWebView, frameMatch());
+        } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+            rawWebView = null;
+            rawWebViewAvailable = false;
+            rawTextView.setVisibility(View.VISIBLE);
+        }
+        return host;
+    }
+
     @SuppressLint("WrongConstant")
     private TextView createRawTextView() {
         TextView raw = new TextView(this);
@@ -479,11 +497,20 @@ public final class MainActivity extends Activity {
         return fallback;
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
+    private WebView createRawWebView() {
+        return createLockedDownWebView("Raw Markdown source", 14);
+    }
+
     private WebView createRenderedWebView() {
+        return createLockedDownWebView("Rendered Markdown preview", 16);
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private WebView createLockedDownWebView(String contentDescription, int defaultFontSize) {
         WebView webView = new WebView(this);
         webView.setBackgroundColor(paneSurfaceColor);
-        webView.setContentDescription("Rendered Markdown preview");
+        webView.setContentDescription(contentDescription);
+        webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(false);
@@ -498,7 +525,7 @@ public final class MainActivity extends Activity {
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
-        settings.setDefaultFontSize(16);
+        settings.setDefaultFontSize(defaultFontSize);
         settings.setTextZoom(100);
         settings.setMediaPlaybackRequiresUserGesture(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -539,16 +566,24 @@ public final class MainActivity extends Activity {
     }
 
     private boolean handleRenderProcessGone(WebView view, boolean crashed) {
+        if (view == rawWebView) {
+            if (rawContentHost != null) {
+                rawContentHost.removeView(view);
+            }
+            destroyWebViewSafely(view);
+            rawWebView = null;
+            rawWebViewAvailable = false;
+            showRawTextFallback(currentMarkdown == null ? "" : currentMarkdown);
+            showToast(crashed
+                    ? "Raw view switched to safe mode after WebView stopped."
+                    : "Raw view switched to safe mode.");
+            return true;
+        }
+
         if (view != null && renderedContentHost != null) {
             renderedContentHost.removeView(view);
         }
-        if (view != null) {
-            try {
-                view.destroy();
-            } catch (RuntimeException ignored) {
-                // The renderer is already gone; there may be nothing left to destroy.
-            }
-        }
+        destroyWebViewSafely(view);
         if (view == renderedWebView) {
             renderedWebView = null;
         }
@@ -562,6 +597,19 @@ public final class MainActivity extends Activity {
         showNativePreview(reason);
         showToast("Preview switched to safe mode.");
         return true;
+    }
+
+    private void destroyWebViewSafely(WebView webView) {
+        if (webView == null) {
+            return;
+        }
+        try {
+            webView.stopLoading();
+            webView.loadUrl("about:blank");
+            webView.destroy();
+        } catch (RuntimeException | LinkageError ignored) {
+            // WebView may already be unavailable or its renderer may already be gone.
+        }
     }
 
     private View createEmptyState() {
@@ -930,11 +978,33 @@ public final class MainActivity extends Activity {
     }
 
     private void setRawTextSafely(String source) {
+        if (rawWebViewAvailable && rawWebView != null) {
+            try {
+                rawTextView.setVisibility(View.GONE);
+                rawWebView.setVisibility(View.VISIBLE);
+                rawWebView.loadDataWithBaseURL(
+                        PREVIEW_BASE_URL,
+                        RawSourceRenderer.toHtmlDocument(source, paneSurfaceColor, textPrimaryColor),
+                        "text/html",
+                        StandardCharsets.UTF_8.name(),
+                        null
+                );
+                return;
+            } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
+                rawWebViewAvailable = false;
+            }
+        }
+
+        showRawTextFallback(source);
+    }
+
+    private void showRawTextFallback(String source) {
+        String safeSource = source == null ? "" : source;
         try {
-            rawTextView.setText(source);
+            rawTextView.setText(safeSource);
         } catch (RuntimeException | LinkageError | OutOfMemoryError error) {
-            int end = Math.min(source.length(), MAX_RAW_RECOVERY_CHARS);
-            String recovery = source.substring(0, end) +
+            int end = Math.min(safeSource.length(), MAX_RAW_RECOVERY_CHARS);
+            String recovery = safeSource.substring(0, end) +
                     "\n\n[Raw display was shortened because Android could not lay out the complete document.]";
             try {
                 rawTextView.setText(recovery);
@@ -944,6 +1014,10 @@ public final class MainActivity extends Activity {
             showToast("Raw view was shortened to keep the app stable.");
         }
         rawTextView.scrollTo(0, 0);
+        rawTextView.setVisibility(View.VISIBLE);
+        if (rawWebView != null) {
+            rawWebView.setVisibility(View.GONE);
+        }
     }
 
     private void showRenderedPreview(MarkdownRenderer.RenderResult renderResult) {
