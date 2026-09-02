@@ -1,0 +1,51 @@
+name: Apply Raw WebView migration
+
+on:
+  push:
+    branches:
+      - raw-webview-persistent-signing-v1.0.3
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: raw-webview-persistent-signing-v1.0.3
+          fetch-depth: 0
+
+      - name: Apply the source patch once
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .migration/v1.0.3-mainactivity.patch.gz.b64 | gzip -dc > /tmp/v1.0.3.patch
+          if git apply --check /tmp/v1.0.3.patch; then
+            git apply /tmp/v1.0.3.patch
+          elif git apply --reverse --check /tmp/v1.0.3.patch; then
+            echo "Raw WebView patch is already applied."
+            exit 0
+          else
+            echo "Raw WebView patch could not be applied cleanly." >&2
+            exit 1
+          fi
+
+      - name: Commit the application changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No source update is needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle app/src/main/java/dev/mdview/app/MainActivity.java
+          git commit -m "Use WebView scrolling for Raw mode"
+          git push origin HEAD:raw-webview-persistent-signing-v1.0.3
